@@ -35,11 +35,11 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Create indexes for faster queries
-CREATE INDEX idx_tasks_user_id ON tasks(user_id);
-CREATE INDEX idx_time_entries_user_id ON time_entries(user_id);
-CREATE INDEX idx_time_entries_task_id ON time_entries(task_id);
-CREATE INDEX idx_time_entries_start ON time_entries(start);
+-- Create indexes for faster queries (IF NOT EXISTS = safe to re-run)
+CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_time_entries_user_id ON time_entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_time_entries_task_id ON time_entries(task_id);
+CREATE INDEX IF NOT EXISTS idx_time_entries_start ON time_entries("start");
 
 -- Row-Level Security (RLS) Policies
 
@@ -49,48 +49,59 @@ ALTER TABLE time_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 
 -- Tasks RLS: Users can only see their own tasks
+DROP POLICY IF EXISTS "Users can view their own tasks" ON tasks;
 CREATE POLICY "Users can view their own tasks"
     ON tasks FOR SELECT
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own tasks" ON tasks;
 CREATE POLICY "Users can insert their own tasks"
     ON tasks FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own tasks" ON tasks;
 CREATE POLICY "Users can update their own tasks"
     ON tasks FOR UPDATE
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own tasks" ON tasks;
 CREATE POLICY "Users can delete their own tasks"
     ON tasks FOR DELETE
     USING (auth.uid() = user_id);
 
 -- Time entries RLS: Users can only see their own entries
+DROP POLICY IF EXISTS "Users can view their own time entries" ON time_entries;
 CREATE POLICY "Users can view their own time entries"
     ON time_entries FOR SELECT
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own time entries" ON time_entries;
 CREATE POLICY "Users can insert their own time entries"
     ON time_entries FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own time entries" ON time_entries;
 CREATE POLICY "Users can update their own time entries"
     ON time_entries FOR UPDATE
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own time entries" ON time_entries;
 CREATE POLICY "Users can delete their own time entries"
     ON time_entries FOR DELETE
     USING (auth.uid() = user_id);
 
 -- Settings RLS: Users can only see their own settings
+DROP POLICY IF EXISTS "Users can view their own settings" ON settings;
 CREATE POLICY "Users can view their own settings"
     ON settings FOR SELECT
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own settings" ON settings;
 CREATE POLICY "Users can insert their own settings"
     ON settings FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own settings" ON settings;
 CREATE POLICY "Users can update their own settings"
     ON settings FOR UPDATE
     USING (auth.uid() = user_id);
