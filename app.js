@@ -66,7 +66,11 @@ class App {
 
     initEventListeners() {
         // Auth
-        document.getElementById('googleSignInBtn').addEventListener('click', () => this.signInWithGoogle());
+        document.getElementById('signInBtn').addEventListener('click', () => this.signInWithEmail());
+        document.getElementById('backBtn').addEventListener('click', () => this.showAuthForm());
+        document.getElementById('authEmail').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.signInWithEmail();
+        });
         document.getElementById('signOutBtn').addEventListener('click', () => this.signOut());
 
         // Task input
@@ -92,17 +96,37 @@ class App {
         document.getElementById('breakMinutes').value = settings.breakMinutes;
     }
 
-    async signInWithGoogle() {
+    async signInWithEmail() {
+        const email = document.getElementById('authEmail').value.trim();
+        if (!email) {
+            alert('Please enter your email');
+            return;
+        }
+
         try {
-            document.getElementById('googleSignInBtn').disabled = true;
-            document.getElementById('googleSignInBtn').textContent = 'Signing in...';
-            await storage.signInWithGoogle();
+            document.getElementById('signInBtn').disabled = true;
+            document.getElementById('signInBtn').textContent = 'Sending...';
+            await storage.signInWithEmail(email);
+            this.showAuthMessage();
         } catch (e) {
             console.error('Sign in failed:', e);
             alert('Sign in failed: ' + e.message);
-            document.getElementById('googleSignInBtn').disabled = false;
-            document.getElementById('googleSignInBtn').textContent = 'Sign in with Google';
+            document.getElementById('signInBtn').disabled = false;
+            document.getElementById('signInBtn').textContent = 'Send Magic Link';
         }
+    }
+
+    showAuthForm() {
+        document.getElementById('authForm').style.display = 'block';
+        document.getElementById('authMessage').style.display = 'none';
+        document.getElementById('authEmail').value = '';
+        document.getElementById('signInBtn').disabled = false;
+        document.getElementById('signInBtn').textContent = 'Send Magic Link';
+    }
+
+    showAuthMessage() {
+        document.getElementById('authForm').style.display = 'none';
+        document.getElementById('authMessage').style.display = 'block';
     }
 
     async signOut() {

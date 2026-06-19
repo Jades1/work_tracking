@@ -18,9 +18,21 @@
     <div id="authModal" class="modal">
         <div class="modal-content">
             <h2>Sign In</h2>
-            <p>Sign in to sync your data across devices</p>
-            <button id="googleSignInBtn" class="btn-primary">Sign in with Google</button>
-            <p class="auth-note">Your data is encrypted and only visible to you</p>
+            <p>Enter your email to sync data across devices</p>
+            <div id="authForm" style="display: block;">
+                <input
+                    type="email"
+                    id="authEmail"
+                    placeholder="your@email.com"
+                    autocomplete="email"
+                >
+                <button id="signInBtn" class="btn-primary">Send Magic Link</button>
+            </div>
+            <div id="authMessage" style="display: none; text-align: center; margin-top: 15px;">
+                <p style="color: #666; font-size: 14px;">Check your email for a sign-in link!</p>
+                <button id="backBtn" class="btn-secondary">Back</button>
+            </div>
+            <p class="auth-note">A link will be sent to your email. Click it to sign in.</p>
         </div>
     </div>
 

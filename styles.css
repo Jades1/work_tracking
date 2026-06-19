@@ -45,9 +45,29 @@ body {
     margin-bottom: 25px;
 }
 
-#googleSignInBtn {
+#authEmail {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+#authEmail:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+#signInBtn {
     width: 100%;
     margin-bottom: 20px;
+}
+
+#backBtn {
+    width: 100%;
 }
 
 .auth-note {

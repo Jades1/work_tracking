@@ -70,7 +70,7 @@ class Storage {
     }
 
     // Auth methods
-    async signInWithGoogle() {
+    async signInWithEmail(email) {
         // Initialize Supabase if not already done
         if (!this.supabaseInitialized) {
             await this.initSupabase();
@@ -80,10 +80,10 @@ class Storage {
             throw new Error('Supabase not initialized. Please refresh the page and try again.');
         }
         try {
-            const { data, error } = await this.supabase.auth.signInWithOAuth({
-                provider: 'google',
+            const { data, error } = await this.supabase.auth.signInWithOtp({
+                email: email,
                 options: {
-                    redirectTo: window.location.origin + window.location.pathname
+                    emailRedirectTo: window.location.origin + window.location.pathname
                 }
             });
             if (error) throw error;
