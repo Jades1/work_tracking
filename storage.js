@@ -149,9 +149,22 @@ class Storage {
             if (tasks.error) throw tasks.error;
             if (timeEntries.error) throw timeEntries.error;
 
-            // Merge cloud data with local (cloud takes precedence if newer)
-            this.db.tasks = tasks.data || [];
-            this.db.timeEntries = timeEntries.data || [];
+            // Normalize Supabase snake_case columns to local camelCase schema
+            this.db.tasks = (tasks.data || []).map(t => ({
+                id: t.id,
+                name: t.name,
+                color: t.color || '#2563eb',
+                createdAt: t.created_at,
+                deleted: t.deleted || false
+            }));
+            this.db.timeEntries = (timeEntries.data || []).map(e => ({
+                id: e.id,
+                taskId: e.task_id,
+                start: e.start,
+                end: e.end,
+                durationSec: e.duration_sec,
+                type: e.type || 'tracked'
+            }));
 
             if (settings.data) {
                 this.db.settings = {
@@ -331,6 +344,17 @@ class Storage {
     getTotalTimeForDate(date = new Date()) {
         const entries = this.getTimeEntriesForDate(date);
         return entries.reduce((sum, e) => sum + e.durationSec, 0);
+    }
+
+    deleteTimeEntry(id) {
+        this.db.timeEntries = this.db.timeEntries.filter(e => e.id !== id);
+        this.saveToLocalStorage();
+        if (this.syncEnabled && this.supabase) {
+            this.supabase.from('time_entries').delete().eq('id', id)
+                .then(({ error }) => {
+                    if (error) console.error('Failed to delete time entry from cloud:', error);
+                });
+        }
     }
 
     // Settings methods

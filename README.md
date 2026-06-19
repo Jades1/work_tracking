@@ -10,6 +10,7 @@ A personal time-tracking + Pomodoro webapp that syncs across devices and runs on
 - **Alarm sound** — Audio notification when each Pomodoro period ends
 - **Cross-device sync** — Data syncs in real time across laptop and phone via Supabase
 - **Mobile-friendly** — Responsive design; use "Add to Home Screen" to make it feel like an app
+- **Delete time entries** — Click any block in the timeline to select it (white ring appears), then press Delete or Backspace to remove it
 - **Offline support** — Service worker caches the app; works offline and syncs when you come back online
 - **Web app manifest** — Install on home screen; full-screen standalone mode
 

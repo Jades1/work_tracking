@@ -2,6 +2,31 @@
 
 This guide walks you through setting up Supabase for cross-device sync on the Time Tracker app.
 
+> **Note (auth method):** The app uses **email magic links** (`signInWithOtp`), not
+> Google OAuth. The "Enable Google OAuth" section below is from an earlier design and
+> is left for reference only — it is not required.
+
+## TODO: Custom SMTP (fixes "email rate limit exceeded")
+
+Supabase's **built-in email sender is heavily rate-limited** (only a few auth emails
+per hour) and is meant for testing only. Hitting "Sign in failed: email rate limit
+exceeded" means that cap was reached.
+
+**Workarounds available right now:**
+- **Wait ~1 hour** — the limit resets on a rolling window. You only need *one* successful
+  magic link; the session persists afterward.
+- **Use "Continue offline"** in the sign-in modal — the app works fully on one device with
+  local storage; sign in later to enable cross-device sync.
+
+**Permanent fix (do this when ready):** configure your own SMTP provider so emails aren't
+capped.
+1. Supabase Dashboard → **Authentication** → **Emails** / **SMTP Settings**
+2. Enable **Custom SMTP** and enter credentials from a provider:
+   - **Resend** (generous free tier), **Brevo**, **SendGrid**, **Mailgun**, or **Postmark**
+3. Set the sender name/address, save, and send a test magic link.
+4. (Optional) Supabase Dashboard → **Authentication** → **Rate Limits** to raise the
+   per-hour email cap once custom SMTP is in place.
+
 ## Prerequisites
 
 - Existing Supabase account at https://supabase.com

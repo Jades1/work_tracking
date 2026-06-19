@@ -32,7 +32,9 @@
                 <p style="color: #666; font-size: 14px;">Check your email for a sign-in link!</p>
                 <button id="backBtn" class="btn-secondary">Back</button>
             </div>
-            <p class="auth-note">A link will be sent to your email. Click it to sign in.</p>
+            <div class="auth-divider">or</div>
+            <button id="offlineBtn" class="btn-secondary">Continue offline</button>
+            <p class="auth-note">Offline mode works fully on this device. Sign in any time to sync across devices.</p>
         </div>
     </div>
 
@@ -48,6 +50,7 @@
                 </div>
                 <div id="authStatus" class="auth-status">
                     <span id="userEmail" class="user-email"></span>
+                    <button id="headerSignInBtn" class="btn-secondary" style="display: none;">Sign In</button>
                     <button id="signOutBtn" class="btn-secondary" style="display: none;">Sign Out</button>
                 </div>
             </div>
@@ -56,7 +59,16 @@
         <main>
             <!-- Timeline Section -->
             <section class="timeline-section">
-                <h2>Today's Timeline</h2>
+                <div class="timeline-section-header">
+                    <h2>Timeline</h2>
+                    <div class="timeline-mode-tabs">
+                        <button class="timeline-mode-btn active" data-mode="today">Today</button>
+                        <button class="timeline-mode-btn" data-mode="vs-yesterday">vs Yesterday</button>
+                        <button class="timeline-mode-btn" data-mode="vs-week">vs Last Week</button>
+                    </div>
+                </div>
+                <p id="timelineHint" class="timeline-hint">Click a block to select, then press Delete or Backspace to remove</p>
+                <div id="timelineLegend" class="timeline-legend" style="display:none"></div>
                 <div id="timeline" class="timeline"></div>
             </section>
 

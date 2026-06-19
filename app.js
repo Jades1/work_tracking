@@ -17,6 +17,8 @@ class App {
 
         // Active focus session state
         this.activeCategoryId = null;
+        this.selectedEntryId = null;
+        this.timelineMode = 'today';
         this.sessionRunning = false;
         this.sessionMode = 'work'; // 'work' or 'break'
         this.sessionEndTime = null;
@@ -25,6 +27,9 @@ class App {
 
         // Shared audio context for alarms (created/resumed on a user gesture)
         this.audioCtx = null;
+
+        // Offline mode: lets the user use the app locally without signing in
+        this.OFFLINE_KEY = 'workTrackerOfflineMode';
 
         this.user = null;
 
@@ -37,6 +42,8 @@ class App {
         this.user = storage.getUser();
         if (this.user) {
             this.showApp();
+        } else if (localStorage.getItem(this.OFFLINE_KEY) === 'true') {
+            this.showApp();
         } else {
             this.showAuthModal();
         }
@@ -45,10 +52,17 @@ class App {
     onAuthChange(user) {
         this.user = user;
         if (user) {
+            // A real session takes over from offline mode
+            localStorage.removeItem(this.OFFLINE_KEY);
             this.showApp();
         } else {
             this.showAuthModal();
         }
+    }
+
+    continueOffline() {
+        localStorage.setItem(this.OFFLINE_KEY, 'true');
+        this.showApp();
     }
 
     showAuthModal() {
@@ -70,13 +84,16 @@ class App {
     updateAuthStatus() {
         const userEmail = document.getElementById('userEmail');
         const signOutBtn = document.getElementById('signOutBtn');
+        const headerSignInBtn = document.getElementById('headerSignInBtn');
 
         if (this.user) {
             userEmail.textContent = this.user.email;
             signOutBtn.style.display = 'inline-block';
+            headerSignInBtn.style.display = 'none';
         } else {
-            userEmail.textContent = '';
+            userEmail.textContent = 'Offline';
             signOutBtn.style.display = 'none';
+            headerSignInBtn.style.display = 'inline-block';
         }
     }
 
@@ -88,6 +105,11 @@ class App {
             if (e.key === 'Enter') this.signInWithEmail();
         });
         document.getElementById('signOutBtn').addEventListener('click', () => this.signOut());
+        document.getElementById('offlineBtn').addEventListener('click', () => this.continueOffline());
+        document.getElementById('headerSignInBtn').addEventListener('click', () => {
+            this.showAuthForm();
+            this.showAuthModal();
+        });
 
         // Category input
         document.getElementById('addCategoryBtn').addEventListener('click', () => this.addCategory());
@@ -111,6 +133,65 @@ class App {
         document.getElementById('testAlarmBtn').addEventListener('click', () => {
             this.getAudioContext(); // unlock/resume audio on this user gesture
             this.playAlarm();
+        });
+
+        // Delete selected time entry on Delete/Backspace
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+            const tag = document.activeElement?.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            if (!this.selectedEntryId) return;
+            storage.deleteTimeEntry(this.selectedEntryId);
+            this.selectedEntryId = null;
+            this.updateTimelineHint(false);
+            this.updateDailyTotal();
+        });
+
+        // Delegated click handler on the static #timeline container — persists through innerHTML re-renders
+        const timelineEl = document.getElementById('timeline');
+        timelineEl.addEventListener('click', (e) => {
+            const block = e.target.closest('.timeline-block');
+            e.stopPropagation();
+            if (!block) {
+                if (this.selectedEntryId) {
+                    this.selectedEntryId = null;
+                    timelineEl.querySelectorAll('.timeline-block.selected').forEach(b => b.classList.remove('selected'));
+                    this.updateTimelineHint(false);
+                }
+                return;
+            }
+            const id = block.dataset.entryId;
+            const alreadySelected = this.selectedEntryId === id;
+            timelineEl.querySelectorAll('.timeline-block').forEach(b => b.classList.remove('selected'));
+            if (!alreadySelected) {
+                this.selectedEntryId = id;
+                block.classList.add('selected');
+                this.updateTimelineHint(true);
+            } else {
+                this.selectedEntryId = null;
+                this.updateTimelineHint(false);
+            }
+        });
+
+        // Deselect when clicking outside the timeline entirely
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#timeline') && this.selectedEntryId) {
+                this.selectedEntryId = null;
+                document.querySelectorAll('.timeline-block.selected').forEach(b => b.classList.remove('selected'));
+                this.updateTimelineHint(false);
+            }
+        });
+
+        // Timeline mode tabs
+        document.querySelectorAll('.timeline-mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.timeline-mode-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.timelineMode = btn.dataset.mode;
+                this.selectedEntryId = null;
+                this.updateTimelineHint(false);
+                this.renderTimeline();
+            });
         });
 
         // Initialize settings UI
@@ -252,29 +333,80 @@ class App {
         this.renderTimeline();
     }
 
+    updateTimelineHint(selected) {
+        const hint = document.getElementById('timelineHint');
+        if (!hint) return;
+        if (selected) {
+            hint.textContent = 'Entry selected — press Delete or Backspace to remove';
+            hint.classList.add('active');
+        } else {
+            hint.textContent = 'Click a block to select, then press Delete or Backspace to remove';
+            hint.classList.remove('active');
+        }
+    }
+
     renderTimeline() {
         const container = document.getElementById('timeline');
-        const entries = storage.getTimeEntriesForDate();
         const categories = storage.getTasks();
+        const PX_PER_HOUR = 44;
+        const HOUR_MS = 3600000;
 
-        if (entries.length === 0) {
+        const today = new Date();
+        const todayEntries = storage.getTimeEntriesForDate(today);
+
+        // Comparison date (null in 'today' mode)
+        let compareDate = null;
+        let compareEntries = [];
+        if (this.timelineMode !== 'today') {
+            compareDate = new Date();
+            compareDate.setDate(today.getDate() - (this.timelineMode === 'vs-yesterday' ? 1 : 7));
+            compareEntries = storage.getTimeEntriesForDate(compareDate);
+        }
+
+        // Update legend
+        const legendEl = document.getElementById('timelineLegend');
+        if (legendEl) {
+            if (compareDate) {
+                const todayStr = today.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+                const compareStr = compareDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+                const compareTitle = this.timelineMode === 'vs-yesterday' ? 'Yesterday' : '7 Days Ago';
+                legendEl.style.display = 'flex';
+                legendEl.innerHTML = `
+                    <span class="legend-today">Today · ${todayStr}</span>
+                    <span class="legend-compare">${compareTitle} · ${compareStr}</span>
+                `;
+            } else {
+                legendEl.style.display = 'none';
+                legendEl.innerHTML = '';
+            }
+        }
+
+        if (todayEntries.length === 0 && compareEntries.length === 0) {
             container.innerHTML = '<div class="timeline-empty">No time tracked yet today</div>';
             return;
         }
 
-        const PX_PER_HOUR = 44; // keep in sync with .timeline-*-track gridline spacing in styles.css
-        const HOUR_MS = 3600000;
+        // Normalize a past entry's datetime to today's date, keeping the same time-of-day
+        const normalizeTime = (isoStr) => {
+            const src = new Date(isoStr);
+            const norm = new Date();
+            norm.setHours(src.getHours(), src.getMinutes(), src.getSeconds(), src.getMilliseconds());
+            return norm;
+        };
 
-        // Window: default 6am–10pm, auto-expanded to include any earlier/later entries.
+        // Unified time window covering all entries (past entries normalized to today's time-of-day)
         const windowStart = new Date(); windowStart.setHours(6, 0, 0, 0);
         const windowEnd = new Date(); windowEnd.setHours(22, 0, 0, 0);
-        entries.forEach(e => {
-            const s = new Date(e.start);
-            const en = new Date(e.end);
+        todayEntries.forEach(e => {
+            const s = new Date(e.start); const en = new Date(e.end);
             if (s < windowStart) windowStart.setTime(s.getTime());
             if (en > windowEnd) windowEnd.setTime(en.getTime());
         });
-        // Snap start down to the hour, end up to the hour
+        compareEntries.forEach(e => {
+            const s = normalizeTime(e.start); const en = normalizeTime(e.end);
+            if (s < windowStart) windowStart.setTime(s.getTime());
+            if (en > windowEnd) windowEnd.setTime(en.getTime());
+        });
         windowStart.setMinutes(0, 0, 0);
         if (windowEnd.getMinutes() !== 0 || windowEnd.getSeconds() !== 0 || windowEnd.getMilliseconds() !== 0) {
             windowEnd.setHours(windowEnd.getHours() + 1, 0, 0, 0);
@@ -284,47 +416,62 @@ class App {
         const trackHeight = (totalMs / HOUR_MS) * PX_PER_HOUR;
         const totalHours = Math.round(totalMs / HOUR_MS);
 
-        // Hour labels every 2 hours, aligned to the track
+        // Hour labels every 2 hours
         let hourLabels = '';
         for (let h = 0; h <= totalHours; h += 2) {
             const labelDate = new Date(windowStart.getTime() + h * HOUR_MS);
             hourLabels += `<div class="timeline-hour-label" style="top:${h * PX_PER_HOUR}px">${this.formatHour(labelDate)}</div>`;
         }
 
-        // One column per category that has logged time today (preserving category order)
-        const columns = categories.filter(cat => entries.some(e => e.taskId === cat.id));
+        // Build column HTML for a set of entries; past=true normalizes times to today
+        const buildColumns = (entries, past) => {
+            const cols = categories.filter(cat => entries.some(e => e.taskId === cat.id));
+            if (cols.length === 0) {
+                return `<div class="timeline-group-empty" style="height:${trackHeight}px">No entries</div>`;
+            }
+            return cols.map(cat => {
+                const color = cat.color || '#2563eb';
+                const blocks = entries
+                    .filter(e => e.taskId === cat.id)
+                    .map(e => {
+                        const s = past ? normalizeTime(e.start) : new Date(e.start);
+                        const en = past ? normalizeTime(e.end) : new Date(e.end);
+                        const top = ((s - windowStart) / HOUR_MS) * PX_PER_HOUR;
+                        const height = Math.max(16, ((en - s) / HOUR_MS) * PX_PER_HOUR);
+                        const mins = Math.max(1, Math.round((en - s) / 60000));
+                        const rawStart = new Date(e.start);
+                        const rawEnd = new Date(e.end);
+                        const timeStr = `${rawStart.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}–${rawEnd.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                        const isSelected = e.id === this.selectedEntryId;
+                        const pastClass = past ? ' timeline-block--past' : '';
+                        return `<div class="timeline-block${isSelected ? ' selected' : ''}${pastClass}" data-entry-id="${e.id}" style="top:${top}px; height:${height}px; background:${color}" title="${this.escapeHtml(cat.name)} · ${timeStr}">${mins}m</div>`;
+                    }).join('');
 
-        const columnsHtml = columns.map(cat => {
-            const color = cat.color || '#2563eb';
-            const blocks = entries
-                .filter(e => e.taskId === cat.id)
-                .map(e => {
-                    const s = new Date(e.start);
-                    const en = new Date(e.end);
-                    const top = ((s - windowStart) / HOUR_MS) * PX_PER_HOUR;
-                    const height = Math.max(16, ((en - s) / HOUR_MS) * PX_PER_HOUR);
-                    const mins = Math.max(1, Math.round((en - s) / 60000));
-                    const timeStr = `${s.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}–${en.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-                    return `<div class="timeline-block" style="top:${top}px; height:${height}px; background:${color}" title="${this.escapeHtml(cat.name)} · ${timeStr}">${mins}m</div>`;
-                }).join('');
-
-            return `
-                <div class="timeline-column">
-                    <div class="timeline-column-header" title="${this.escapeHtml(cat.name)}">
-                        <span class="category-dot" style="background:${color}"></span>
-                        <span class="timeline-column-name">${this.escapeHtml(cat.name)}</span>
+                return `
+                    <div class="timeline-column">
+                        <div class="timeline-column-header" title="${this.escapeHtml(cat.name)}">
+                            <span class="category-dot" style="background:${color}"></span>
+                            <span class="timeline-column-name">${this.escapeHtml(cat.name)}</span>
+                        </div>
+                        <div class="timeline-column-track" style="height:${trackHeight}px">${blocks}</div>
                     </div>
-                    <div class="timeline-column-track" style="height:${trackHeight}px">${blocks}</div>
-                </div>
-            `;
-        }).join('');
+                `;
+            }).join('');
+        };
+
+        const todayColumnsHtml = buildColumns(todayEntries, false);
+        const compareHtml = compareDate
+            ? `<div class="timeline-group-divider"></div>${buildColumns(compareEntries, true)}`
+            : '';
 
         container.innerHTML = `
             <div class="timeline-axis">
                 <div class="timeline-axis-header"></div>
                 <div class="timeline-axis-track" style="height:${trackHeight}px">${hourLabels}</div>
             </div>
-            <div class="timeline-columns">${columnsHtml}</div>
+            <div class="timeline-columns">
+                ${todayColumnsHtml}${compareHtml}
+            </div>
         `;
     }
 
