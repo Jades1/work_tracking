@@ -4,15 +4,19 @@
 -- Enable necessary extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Create tasks table
+-- Create tasks table (a "task" is a category in the UI)
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     user_id UUID NOT NULL DEFAULT auth.uid(),
     name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#2563eb',
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     deleted BOOLEAN DEFAULT FALSE
 );
+
+-- Add color column for databases created before categories had colors (safe to re-run)
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '#2563eb';
 
 -- Create time_entries table
 CREATE TABLE IF NOT EXISTS time_entries (

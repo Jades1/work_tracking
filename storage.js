@@ -179,6 +179,7 @@ class Storage {
                         id: task.id,
                         user_id: this.user.id,
                         name: task.name,
+                        color: task.color || '#2563eb',
                         created_at: task.createdAt,
                         deleted: false
                     });
@@ -261,10 +262,11 @@ class Storage {
         return this.db.tasks.filter(t => !t.deleted);
     }
 
-    addTask(name) {
+    addTask(name, color = '#2563eb') {
         const task = {
             id: Date.now().toString(),
             name,
+            color,
             createdAt: new Date().toISOString(),
             deleted: false
         };

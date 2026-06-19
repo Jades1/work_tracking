@@ -2,19 +2,31 @@
 
 class App {
     constructor() {
-        this.selectedTaskId = null;
-        this.tracking = false;
-        this.trackingStartTime = null;
-        this.trackingIntervalId = null;
+        // Color palette for categories (blue-forward, distinct hues)
+        this.PALETTE = [
+            '#2563eb', // blue
+            '#0ea5e9', // sky
+            '#06b6d4', // cyan
+            '#10b981', // emerald
+            '#84cc16', // lime
+            '#f59e0b', // amber
+            '#f43f5e', // rose
+            '#8b5cf6'  // violet
+        ];
+        this.selectedColor = this.nextUnusedColor();
 
-        this.pomodoroRunning = false;
-        this.pomodoroMode = 'work'; // 'work' or 'break'
-        this.pomodoroEndTime = null;
-        this.pomodoroIntervalId = null;
+        // Active focus session state
+        this.activeCategoryId = null;
+        this.sessionRunning = false;
+        this.sessionMode = 'work'; // 'work' or 'break'
+        this.sessionEndTime = null;
+        this.sessionIntervalId = null;
+        this.workSegmentStart = null;
 
         this.user = null;
 
         this.initEventListeners();
+        this.renderColorPalette();
         this.checkAuthState();
     }
 
@@ -39,7 +51,7 @@ class App {
     showAuthModal() {
         document.getElementById('authModal').style.display = 'flex';
         document.querySelector('.container').style.display = 'none';
-        this.renderTaskList();
+        this.renderCategoryList();
         this.updateDailyTotal();
     }
 
@@ -47,7 +59,8 @@ class App {
         document.getElementById('authModal').style.display = 'none';
         document.querySelector('.container').style.display = 'block';
         this.updateAuthStatus();
-        this.renderTaskList();
+        this.renderColorPalette();
+        this.renderCategoryList();
         this.updateDailyTotal();
     }
 
@@ -73,14 +86,11 @@ class App {
         });
         document.getElementById('signOutBtn').addEventListener('click', () => this.signOut());
 
-        // Task input
-        document.getElementById('addTaskBtn').addEventListener('click', () => this.addTask());
-        document.getElementById('taskInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.addTask();
+        // Category input
+        document.getElementById('addCategoryBtn').addEventListener('click', () => this.addCategory());
+        document.getElementById('categoryInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.addCategory();
         });
-
-        // Pomodoro
-        document.getElementById('startPomodoroBtn').addEventListener('click', () => this.startPomodoro());
 
         // Settings
         document.getElementById('workMinutes').addEventListener('change', (e) => {
@@ -135,169 +145,284 @@ class App {
         }
     }
 
-    // Task Management
-    addTask() {
-        const input = document.getElementById('taskInput');
+    // Category color helpers
+    nextUnusedColor() {
+        const used = storage.getTasks().map(c => c.color);
+        const unused = this.PALETTE.find(c => !used.includes(c));
+        return unused || this.PALETTE[storage.getTasks().length % this.PALETTE.length];
+    }
+
+    renderColorPalette() {
+        const palette = document.getElementById('colorPalette');
+        if (!palette) return;
+        palette.innerHTML = this.PALETTE.map(c => `
+            <button
+                type="button"
+                class="swatch ${c === this.selectedColor ? 'selected' : ''}"
+                data-color="${c}"
+                style="background:${c}"
+                title="${c}"
+            ></button>
+        `).join('');
+
+        palette.querySelectorAll('.swatch').forEach(sw => {
+            sw.addEventListener('click', () => {
+                this.selectedColor = sw.dataset.color;
+                this.renderColorPalette();
+            });
+        });
+    }
+
+    // Category Management
+    addCategory() {
+        const input = document.getElementById('categoryInput');
         const name = input.value.trim();
         if (!name) return;
 
-        storage.addTask(name);
+        storage.addTask(name, this.selectedColor);
         input.value = '';
-        this.renderTaskList();
+        this.selectedColor = this.nextUnusedColor();
+        this.renderColorPalette();
+        this.renderCategoryList();
     }
 
-    deleteTask(id) {
-        if (confirm('Delete this task?')) {
-            storage.deleteTask(id);
-            if (this.selectedTaskId === id) {
-                this.selectedTaskId = null;
-                this.stopTracking();
+    deleteCategory(id) {
+        if (confirm('Delete this category? Its logged time will also be removed.')) {
+            if (this.activeCategoryId === id) {
+                this.stopSession();
             }
-            this.renderTaskList();
+            storage.deleteTask(id);
+            this.renderCategoryList();
+            this.updateDailyTotal();
         }
     }
 
-    selectTask(id) {
-        this.selectedTaskId = id;
-        this.renderTaskList();
-    }
+    renderCategoryList() {
+        const list = document.getElementById('categoryList');
+        const categories = storage.getTasks();
 
-    renderTaskList() {
-        const list = document.getElementById('taskList');
-        const tasks = storage.getTasks();
+        if (categories.length === 0) {
+            list.innerHTML = '<li class="category-empty">No categories yet. Add one to start tracking.</li>';
+        } else {
+            list.innerHTML = categories.map(cat => {
+                const totalSec = storage.getTotalTimeForTaskOnDate(cat.id);
+                const timeStr = this.formatSeconds(totalSec);
+                const isActive = cat.id === this.activeCategoryId;
 
-        list.innerHTML = tasks.map(task => {
-            const totalSec = storage.getTotalTimeForTaskOnDate(task.id);
-            const timeStr = this.formatSeconds(totalSec);
-            const isSelected = task.id === this.selectedTaskId;
+                return `
+                    <li class="category-item ${isActive ? 'active' : ''}" data-id="${cat.id}" style="border-left-color:${cat.color}">
+                        <div class="category-item-left">
+                            <span class="category-dot" style="background:${cat.color}"></span>
+                            <span class="category-name">${this.escapeHtml(cat.name)}</span>
+                            <span class="category-time">Today: ${timeStr}</span>
+                        </div>
+                        <div class="category-item-actions">
+                            ${isActive ? '<span class="category-running">● running</span>' : ''}
+                            <button class="btn-danger" onclick="app.deleteCategory('${cat.id}')">Delete</button>
+                        </div>
+                    </li>
+                `;
+            }).join('');
 
-            return `
-                <li class="task-item ${isSelected ? 'active' : ''}" data-id="${task.id}">
-                    <div class="task-item-left">
-                        <span class="task-item-name">${this.escapeHtml(task.name)}</span>
-                        <span class="task-item-time">Today: ${timeStr}</span>
-                    </div>
-                    <div class="task-item-actions">
-                        <button class="btn-danger" onclick="app.deleteTask('${task.id}')">Delete</button>
-                    </div>
-                </li>
-            `;
-        }).join('');
-
-        // Add click handlers to select tasks
-        document.querySelectorAll('.task-item').forEach(item => {
-            item.addEventListener('click', (e) => {
-                if (!e.target.closest('button')) {
-                    this.selectTask(item.dataset.id);
-                }
+            // Clicking a category starts (or switches to) its focus session
+            list.querySelectorAll('.category-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    if (!e.target.closest('button')) {
+                        this.onCategoryClick(item.dataset.id);
+                    }
+                });
             });
-        });
+        }
 
-        // Render timeline
+        // Keep the timeline in sync
         this.renderTimeline();
     }
 
     renderTimeline() {
-        const grid = document.getElementById('timelineGrid');
+        const container = document.getElementById('timeline');
         const entries = storage.getTimeEntriesForDate();
-        const tasks = storage.getTasks();
+        const categories = storage.getTasks();
 
         if (entries.length === 0) {
-            grid.innerHTML = '<div class="timeline-empty">No time tracked yet today</div>';
+            container.innerHTML = '<div class="timeline-empty">No time tracked yet today</div>';
             return;
         }
 
-        // Find min/max times to determine scale
-        const startOfDay = new Date();
-        startOfDay.setHours(8, 0, 0, 0);
-        const endOfDay = new Date();
-        endOfDay.setHours(18, 0, 0, 0);
+        const PX_PER_HOUR = 44; // keep in sync with .timeline-*-track gridline spacing in styles.css
+        const HOUR_MS = 3600000;
 
-        const dayDuration = endOfDay - startOfDay;
-        const gridHeight = 360; // 6 hours * 60px per hour
+        // Window: default 6am–10pm, auto-expanded to include any earlier/later entries.
+        const windowStart = new Date(); windowStart.setHours(6, 0, 0, 0);
+        const windowEnd = new Date(); windowEnd.setHours(22, 0, 0, 0);
+        entries.forEach(e => {
+            const s = new Date(e.start);
+            const en = new Date(e.end);
+            if (s < windowStart) windowStart.setTime(s.getTime());
+            if (en > windowEnd) windowEnd.setTime(en.getTime());
+        });
+        // Snap start down to the hour, end up to the hour
+        windowStart.setMinutes(0, 0, 0);
+        if (windowEnd.getMinutes() !== 0 || windowEnd.getSeconds() !== 0 || windowEnd.getMilliseconds() !== 0) {
+            windowEnd.setHours(windowEnd.getHours() + 1, 0, 0, 0);
+        }
 
-        grid.innerHTML = entries.map((entry, idx) => {
-            const entryStart = new Date(entry.start);
-            const entryEnd = new Date(entry.end);
-            const task = tasks.find(t => t.id === entry.taskId);
+        const totalMs = windowEnd - windowStart;
+        const trackHeight = (totalMs / HOUR_MS) * PX_PER_HOUR;
+        const totalHours = Math.round(totalMs / HOUR_MS);
 
-            // Calculate position and height
-            const offsetMs = Math.max(0, entryStart - startOfDay);
-            const topPercent = (offsetMs / dayDuration) * 100;
-            const durationMs = entryEnd - entryStart;
-            const heightPercent = (durationMs / dayDuration) * 100;
+        // Hour labels every 2 hours, aligned to the track
+        let hourLabels = '';
+        for (let h = 0; h <= totalHours; h += 2) {
+            const labelDate = new Date(windowStart.getTime() + h * HOUR_MS);
+            hourLabels += `<div class="timeline-hour-label" style="top:${h * PX_PER_HOUR}px">${this.formatHour(labelDate)}</div>`;
+        }
 
-            const taskIndex = (tasks.findIndex(t => t.id === entry.taskId) % 6) + 1;
-            const timeStr = `${entryStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}-${entryEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        // One column per category that has logged time today (preserving category order)
+        const columns = categories.filter(cat => entries.some(e => e.taskId === cat.id));
+
+        const columnsHtml = columns.map(cat => {
+            const color = cat.color || '#2563eb';
+            const blocks = entries
+                .filter(e => e.taskId === cat.id)
+                .map(e => {
+                    const s = new Date(e.start);
+                    const en = new Date(e.end);
+                    const top = ((s - windowStart) / HOUR_MS) * PX_PER_HOUR;
+                    const height = Math.max(16, ((en - s) / HOUR_MS) * PX_PER_HOUR);
+                    const mins = Math.max(1, Math.round((en - s) / 60000));
+                    const timeStr = `${s.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}–${en.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                    return `<div class="timeline-block" style="top:${top}px; height:${height}px; background:${color}" title="${this.escapeHtml(cat.name)} · ${timeStr}">${mins}m</div>`;
+                }).join('');
 
             return `
-                <div
-                    class="timeline-block task-${taskIndex}"
-                    style="top: ${topPercent}%; height: ${heightPercent}%;"
-                    title="${task?.name || 'Unknown'} - ${timeStr}"
-                >
-                    ${this.escapeHtml(task?.name || 'Unnamed')}
+                <div class="timeline-column">
+                    <div class="timeline-column-header" title="${this.escapeHtml(cat.name)}">
+                        <span class="category-dot" style="background:${color}"></span>
+                        <span class="timeline-column-name">${this.escapeHtml(cat.name)}</span>
+                    </div>
+                    <div class="timeline-column-track" style="height:${trackHeight}px">${blocks}</div>
                 </div>
             `;
         }).join('');
-    }
 
-    // Time Tracking
-    startTracking() {
-        if (!this.selectedTaskId) {
-            alert('Please select a task first');
-            return;
-        }
-        this.tracking = true;
-        this.trackingStartTime = new Date();
-        this.renderTimerArea();
-        this.trackingIntervalId = setInterval(() => this.updateTimerDisplay(), 100);
-    }
-
-    stopTracking() {
-        if (!this.tracking) return;
-
-        this.tracking = false;
-        clearInterval(this.trackingIntervalId);
-
-        // Save the time entry
-        storage.addTimeEntry(
-            this.selectedTaskId,
-            this.trackingStartTime,
-            new Date(),
-            'tracked'
-        );
-
-        this.trackingStartTime = null;
-        this.renderTaskList();
-        this.updateDailyTotal();
-        this.renderTimerArea();
-    }
-
-    updateTimerDisplay() {
-        if (!this.tracking) return;
-        const elapsed = Math.floor((new Date() - this.trackingStartTime) / 1000);
-        const timerArea = document.getElementById('timerArea');
-
-        timerArea.innerHTML = `
-            <div class="timer-display">${this.formatSeconds(elapsed)}</div>
-            <div class="timer-controls">
-                <button class="btn-primary" onclick="app.stopTracking()">Stop</button>
+        container.innerHTML = `
+            <div class="timeline-axis">
+                <div class="timeline-axis-header"></div>
+                <div class="timeline-axis-track" style="height:${trackHeight}px">${hourLabels}</div>
             </div>
+            <div class="timeline-columns">${columnsHtml}</div>
         `;
     }
 
-    renderTimerArea() {
-        const timerArea = document.getElementById('timerArea');
+    formatHour(date) {
+        let h = date.getHours();
+        const ampm = h >= 12 ? 'pm' : 'am';
+        h = h % 12;
+        if (h === 0) h = 12;
+        return `${h}${ampm}`;
+    }
 
-        if (this.tracking) {
-            this.updateTimerDisplay();
-        } else if (!this.selectedTaskId) {
-            timerArea.innerHTML = '<p class="no-task">Select a task to start tracking</p>';
+    // Focus session (Pomodoro) — driven by clicking a category
+    onCategoryClick(categoryId) {
+        // Already running this category? Do nothing.
+        if (this.sessionRunning && this.activeCategoryId === categoryId) return;
+        // Switching categories: stop the current session (logs partial work) first.
+        if (this.sessionRunning) this.stopSession();
+        this.startSession(categoryId);
+    }
+
+    startSession(categoryId) {
+        this.activeCategoryId = categoryId;
+        this.sessionRunning = true;
+        this.beginWork();
+        this.sessionIntervalId = setInterval(() => this.updateSessionDisplay(), 200);
+        this.updateSessionDisplay();
+        this.renderCategoryList();
+    }
+
+    beginWork() {
+        const settings = storage.getSettings();
+        this.sessionMode = 'work';
+        this.workSegmentStart = new Date();
+        this.sessionEndTime = new Date(Date.now() + settings.workMinutes * 60 * 1000);
+    }
+
+    beginBreak() {
+        const settings = storage.getSettings();
+        this.sessionMode = 'break';
+        this.workSegmentStart = null;
+        this.sessionEndTime = new Date(Date.now() + settings.breakMinutes * 60 * 1000);
+    }
+
+    stopSession() {
+        if (!this.sessionRunning) return;
+
+        this.sessionRunning = false;
+        clearInterval(this.sessionIntervalId);
+
+        // Log partial work if we stopped mid-work session
+        if (this.sessionMode === 'work' && this.workSegmentStart) {
+            const now = new Date();
+            if (now - this.workSegmentStart >= 1000) {
+                storage.addTimeEntry(this.activeCategoryId, this.workSegmentStart, now, 'pomodoro-work');
+            }
+        }
+
+        this.activeCategoryId = null;
+        this.workSegmentStart = null;
+        this.sessionEndTime = null;
+        this.updateDailyTotal();
+        this.renderCategoryList();
+        this.renderSessionArea();
+    }
+
+    updateSessionDisplay() {
+        if (!this.sessionRunning) return;
+
+        const now = new Date();
+        const remaining = Math.max(0, this.sessionEndTime - now);
+        const remainingSec = Math.floor(remaining / 1000);
+
+        if (remaining <= 0) {
+            this.playAlarm();
+            if (this.sessionMode === 'work') {
+                // Log the completed work block, then roll into a break
+                storage.addTimeEntry(this.activeCategoryId, this.workSegmentStart, this.sessionEndTime, 'pomodoro-work');
+                this.updateDailyTotal();
+                this.renderCategoryList();
+                this.beginBreak();
+            } else {
+                // Break finished — back to work (timer keeps running)
+                this.beginWork();
+            }
+            this.updateSessionDisplay();
+            return;
+        }
+
+        const category = storage.getTasks().find(c => c.id === this.activeCategoryId);
+        const color = category?.color || '#2563eb';
+        const name = this.escapeHtml(category?.name || 'Session');
+        const modeLabel = this.sessionMode === 'work' ? 'Focus' : 'Break';
+        const timeStr = this.formatSeconds(remainingSec);
+
+        const area = document.getElementById('sessionArea');
+        area.innerHTML = `
+            <div class="session-category">
+                <span class="category-dot" style="background:${color}"></span>
+                <span class="session-category-name">${name}</span>
+            </div>
+            <div class="session-status session-${this.sessionMode}">${modeLabel}</div>
+            <div class="session-display" style="color:${color}">${timeStr}</div>
+            <button class="btn-secondary" onclick="app.stopSession()">Stop</button>
+        `;
+    }
+
+    renderSessionArea() {
+        const area = document.getElementById('sessionArea');
+        if (this.sessionRunning) {
+            this.updateSessionDisplay();
         } else {
-            timerArea.innerHTML = `
-                <button class="btn-primary" onclick="app.startTracking()">Start Tracking</button>
-            `;
+            area.innerHTML = '<p class="no-session">Click a category to start a focus session</p>';
         }
     }
 
@@ -307,74 +432,6 @@ class App {
         const timeStr = this.formatSeconds(totalSec);
         document.getElementById('dailyTotal').textContent = timeStr;
         this.renderTimeline();
-    }
-
-    // Pomodoro
-    startPomodoro() {
-        if (!this.selectedTaskId) {
-            alert('Please select a task first');
-            return;
-        }
-
-        this.pomodoroRunning = true;
-        this.pomodoroMode = 'work';
-        const settings = storage.getSettings();
-        this.pomodoroEndTime = new Date(Date.now() + settings.workMinutes * 60 * 1000);
-        this.pomodoroIntervalId = setInterval(() => this.updatePomodoroDisplay(), 100);
-        this.updatePomodoroDisplay();
-    }
-
-    stopPomodoro() {
-        this.pomodoroRunning = false;
-        clearInterval(this.pomodoroIntervalId);
-        document.getElementById('pomodoroArea').innerHTML = '<p class="no-session">Not running</p>';
-    }
-
-    updatePomodoroDisplay() {
-        if (!this.pomodoroRunning) return;
-
-        const now = new Date();
-        const remaining = Math.max(0, this.pomodoroEndTime - now);
-        const remainingSec = Math.floor(remaining / 1000);
-
-        const pomodoroArea = document.getElementById('pomodoroArea');
-
-        if (remainingSec <= 0) {
-            this.playAlarm();
-            this.transitionPomodoroMode();
-        } else {
-            const timeStr = this.formatSeconds(remainingSec);
-            const modeLabel = this.pomodoroMode === 'work' ? 'Work' : 'Break';
-
-            pomodoroArea.innerHTML = `
-                <div class="pomodoro-status">${modeLabel} Time</div>
-                <div class="pomodoro-display">${timeStr}</div>
-                <button class="btn-secondary" onclick="app.stopPomodoro()">Stop</button>
-            `;
-        }
-    }
-
-    transitionPomodoroMode() {
-        const settings = storage.getSettings();
-
-        if (this.pomodoroMode === 'work') {
-            // Save the work session as a time entry
-            const workDuration = settings.workMinutes * 60 * 1000;
-            const startTime = new Date(this.pomodoroEndTime - workDuration);
-            storage.addTimeEntry(this.selectedTaskId, startTime, this.pomodoroEndTime, 'pomodoro-work');
-            this.updateDailyTotal();
-            this.renderTaskList();
-
-            // Switch to break
-            this.pomodoroMode = 'break';
-            this.pomodoroEndTime = new Date(Date.now() + settings.breakMinutes * 60 * 1000);
-        } else {
-            // Switch back to work
-            this.pomodoroMode = 'work';
-            this.pomodoroEndTime = new Date(Date.now() + settings.workMinutes * 60 * 1000);
-        }
-
-        this.updatePomodoroDisplay();
     }
 
     playAlarm() {
@@ -397,7 +454,6 @@ class App {
             oscillator.stop(audioContext.currentTime + 0.5);
         } catch (e) {
             console.log('Audio context unavailable, using fallback');
-            // Fallback: just log if audio API isn't available
         }
     }
 

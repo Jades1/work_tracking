@@ -6,7 +6,7 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
     color: #333;
     line-height: 1.6;
     min-height: 100vh;
@@ -57,8 +57,8 @@ body {
 
 #authEmail:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
 
 #signInBtn {
@@ -105,7 +105,7 @@ header {
 
 header h1 {
     font-size: 24px;
-    color: #667eea;
+    color: #2563eb;
     margin: 0;
 }
 
@@ -123,7 +123,7 @@ header h1 {
 }
 
 .daily-total .time {
-    color: #667eea;
+    color: #2563eb;
 }
 
 .auth-status {
@@ -150,80 +150,114 @@ section {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-/* Timeline Section */
-.timeline-section {
-    order: -1;
+section h2 {
+    margin-bottom: 15px;
+    color: #333;
+    font-size: 18px;
 }
 
-.timeline-container {
-    display: flex;
-    gap: 15px;
-    overflow-x: auto;
-    padding: 10px 0;
-}
-
-.timeline-hours {
-    min-width: 60px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-around;
-    font-size: 12px;
+.section-hint {
+    margin-top: -8px;
+    margin-bottom: 15px;
+    font-size: 13px;
     color: #999;
-    padding-top: 5px;
 }
 
-.timeline-hour {
-    height: 60px;
+/* Timeline Section */
+.timeline {
     display: flex;
-    align-items: flex-start;
-    font-weight: 600;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 4px 0 8px;
 }
 
-.timeline-grid {
-    flex: 1;
-    min-width: 300px;
+.timeline-axis {
+    flex: 0 0 auto;
+    width: 46px;
+}
+
+.timeline-axis-header {
+    height: 28px;
+}
+
+.timeline-axis-track {
     position: relative;
-    background: linear-gradient(
-        to right,
-        transparent 0,
-        transparent calc(100% / 6),
-        #f0f0f0 calc(100% / 6),
-        #f0f0f0 calc(100% / 6 + 1px),
-        transparent calc(100% / 6 + 1px)
+}
+
+.timeline-hour-label {
+    position: absolute;
+    left: 0;
+    font-size: 11px;
+    color: #999;
+    font-weight: 600;
+    transform: translateY(-6px);
+}
+
+.timeline-columns {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.timeline-column {
+    flex: 1 1 0;
+    min-width: 70px;
+}
+
+.timeline-column-header {
+    height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #444;
+    overflow: hidden;
+}
+
+.timeline-column-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Gridline spacing (44px) must match PX_PER_HOUR in app.js renderTimeline() */
+.timeline-column-track {
+    position: relative;
+    border-left: 1px solid #eee;
+    border-radius: 4px;
+    background: repeating-linear-gradient(
+        to bottom,
+        #f1f1f1 0,
+        #f1f1f1 1px,
+        transparent 1px,
+        transparent 44px
     );
-    background-size: 100% 100%;
-    background-repeat: repeat-y;
 }
 
 .timeline-block {
     position: absolute;
-    left: 0;
-    right: 0;
-    margin: 2px;
-    padding: 8px;
-    border-radius: 6px;
-    font-size: 12px;
+    left: 2px;
+    right: 2px;
+    padding: 2px 5px;
+    border-radius: 5px;
+    font-size: 10px;
     font-weight: 600;
     color: white;
-    cursor: pointer;
-    transition: all 0.2s;
+    cursor: default;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: transform 0.15s, box-shadow 0.15s;
 }
 
 .timeline-block:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transform: scale(1.02);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28);
+    z-index: 2;
 }
-
-.timeline-block.task-1 { background: #667eea; }
-.timeline-block.task-2 { background: #764ba2; }
-.timeline-block.task-3 { background: #f093fb; }
-.timeline-block.task-4 { background: #4facfe; }
-.timeline-block.task-5 { background: #43e97b; }
-.timeline-block.task-6 { background: #fa709a; }
 
 .timeline-empty {
     padding: 40px 20px;
@@ -232,32 +266,7 @@ section {
     font-size: 14px;
 }
 
-section h2 {
-    margin-bottom: 15px;
-    color: #333;
-    font-size: 18px;
-}
-
-.task-input {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 15px;
-}
-
-.task-input input {
-    flex: 1;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    font-size: 14px;
-}
-
-.task-input input:focus {
-    outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
-}
-
+/* Buttons */
 button {
     padding: 10px 20px;
     border: none;
@@ -277,12 +286,12 @@ button:active {
 }
 
 .btn-primary {
-    background: #667eea;
+    background: #2563eb;
     color: white;
 }
 
 .btn-primary:hover {
-    background: #5568d3;
+    background: #1d4ed8;
 }
 
 .btn-secondary {
@@ -305,11 +314,124 @@ button:active {
     background: #e53935;
 }
 
-.task-list {
+/* Active Session */
+.session-area {
+    padding: 14px;
+    background: #f7f9ff;
+    border-radius: 8px;
+    text-align: center;
+    min-height: 88px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+}
+
+.no-session {
+    color: #999;
+    font-size: 14px;
+}
+
+.session-category {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+.session-category-name {
+    font-size: 16px;
+}
+
+.session-status {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 10px;
+    border-radius: 12px;
+}
+
+.session-status.session-work {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.session-status.session-break {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.session-display {
+    font-size: 34px;
+    font-weight: 700;
+    margin: 4px 0 10px;
+    font-family: 'Courier New', monospace;
+}
+
+/* Categories */
+.category-input {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.category-input input[type="text"] {
+    flex: 1;
+    min-width: 160px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.category-input input[type="text"]:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.color-palette {
+    display: flex;
+    gap: 6px;
+}
+
+.swatch {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s;
+}
+
+.swatch:hover {
+    transform: scale(1.15);
+}
+
+.swatch.selected {
+    border-color: #333;
+    box-shadow: 0 0 0 2px white, 0 0 0 4px #33333355;
+}
+
+.category-list {
     list-style: none;
 }
 
-.task-item {
+.category-empty {
+    padding: 20px;
+    text-align: center;
+    color: #bbb;
+    font-size: 14px;
+}
+
+.category-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -321,93 +443,54 @@ button:active {
     transition: all 0.2s;
 }
 
-.task-item:hover {
-    background: #f9f9f9;
-    border-left-color: #667eea;
+.category-item:hover {
+    background: #f5f8ff;
 }
 
-.task-item.active {
-    background: #f0f4ff;
-    border-left-color: #667eea;
+.category-item.active {
+    background: #eef4ff;
     font-weight: 600;
 }
 
-.task-item-left {
+.category-item-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     flex: 1;
+    flex-wrap: wrap;
 }
 
-.task-item-name {
-    display: block;
-    margin-bottom: 4px;
+.category-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
 }
 
-.task-item-time {
+.category-name {
+    font-weight: 600;
+}
+
+.category-time {
     font-size: 12px;
     color: #999;
 }
 
-.task-item-actions {
+.category-item-actions {
     display: flex;
-    gap: 5px;
-}
-
-.timer-area,
-.pomodoro-area {
-    padding: 20px;
-    background: #f9f9f9;
-    border-radius: 8px;
-    text-align: center;
-    min-height: 120px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
     align-items: center;
+    gap: 8px;
 }
 
-.no-task,
-.no-session {
-    color: #999;
-    font-size: 14px;
-}
-
-.timer-display {
-    font-size: 48px;
+.category-running {
+    font-size: 12px;
     font-weight: 700;
-    color: #667eea;
-    margin: 20px 0;
-    font-family: 'Courier New', monospace;
+    color: #2563eb;
+    white-space: nowrap;
 }
 
-.timer-controls {
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-}
-
-.pomodoro-info {
-    margin-bottom: 15px;
-    font-size: 14px;
-    color: #666;
-}
-
-.pomodoro-display {
-    font-size: 48px;
-    font-weight: 700;
-    color: #667eea;
-    margin: 20px 0;
-    font-family: 'Courier New', monospace;
-}
-
-.pomodoro-status {
-    font-size: 14px;
-    color: #999;
-    margin-bottom: 10px;
-}
-
-.pomodoro-controls {
-    margin-bottom: 15px;
-}
-
+/* Settings */
 .settings-details {
     margin-top: 15px;
     border-top: 1px solid #ddd;
@@ -416,7 +499,7 @@ button:active {
 
 .settings-details summary {
     cursor: pointer;
-    color: #667eea;
+    color: #2563eb;
     font-weight: 600;
     font-size: 14px;
 }
@@ -449,7 +532,7 @@ button:active {
 
 .settings input:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #2563eb;
 }
 
 /* Mobile responsive */
@@ -491,25 +574,25 @@ button:active {
         font-size: 16px;
     }
 
-    .timer-display,
-    .pomodoro-display {
-        font-size: 36px;
+    .session-display {
+        font-size: 30px;
     }
 
-    .task-input {
+    .category-input {
         flex-direction: column;
+        align-items: stretch;
     }
 
-    .task-input button {
+    .color-palette {
+        justify-content: center;
+    }
+
+    .category-input button {
         width: 100%;
     }
 
     button {
         padding: 12px 16px;
         font-size: 16px;
-    }
-
-    .btn-primary {
-        width: 100%;
     }
 }

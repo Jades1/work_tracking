@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#667eea">
+    <meta name="theme-color" content="#2563eb">
     <meta name="description" content="Personal time-tracking and Pomodoro timer webapp with cross-device sync">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -11,7 +11,7 @@
     <title>Time Tracker + Pomodoro</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23667eea' width='100' height='100'/><text x='50' y='50' font-size='60' font-weight='bold' text-anchor='middle' dominant-baseline='middle' fill='white'>⏱</text></svg>">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%232563eb' width='100' height='100'/><text x='50' y='50' font-size='60' font-weight='bold' text-anchor='middle' dominant-baseline='middle' fill='white'>⏱</text></svg>">
 </head>
 <body>
     <!-- Auth modal -->
@@ -57,56 +57,20 @@
             <!-- Timeline Section -->
             <section class="timeline-section">
                 <h2>Today's Timeline</h2>
-                <div class="timeline-container">
-                    <div class="timeline-hours">
-                        <div class="timeline-hour">8am</div>
-                        <div class="timeline-hour">10am</div>
-                        <div class="timeline-hour">12pm</div>
-                        <div class="timeline-hour">2pm</div>
-                        <div class="timeline-hour">4pm</div>
-                        <div class="timeline-hour">6pm</div>
-                    </div>
-                    <div id="timelineGrid" class="timeline-grid"></div>
-                </div>
+                <div id="timeline" class="timeline"></div>
             </section>
 
-            <!-- Task List -->
-            <section class="task-section">
-                <h2>Tasks</h2>
-                <div class="task-input">
-                    <input
-                        type="text"
-                        id="taskInput"
-                        placeholder="Add a new task..."
-                        autocomplete="off"
-                    >
-                    <button id="addTaskBtn">Add</button>
-                </div>
-                <ul id="taskList" class="task-list"></ul>
-            </section>
-
-            <!-- Active Timer -->
-            <section class="timer-section">
-                <h2>Active Timer</h2>
-                <div id="timerArea" class="timer-area">
-                    <p class="no-task">Select a task to start tracking</p>
-                </div>
-            </section>
-
-            <!-- Pomodoro -->
-            <section class="pomodoro-section">
-                <h2>Pomodoro</h2>
-                <div class="pomodoro-controls">
-                    <button id="startPomodoroBtn" class="btn-primary">Start Focus Session</button>
-                </div>
-                <div id="pomodoroArea" class="pomodoro-area">
-                    <p class="no-session">Not running</p>
+            <!-- Active Focus Session -->
+            <section class="session-section">
+                <h2>Active Session</h2>
+                <div id="sessionArea" class="session-area">
+                    <p class="no-session">Click a category to start a focus session</p>
                 </div>
                 <details class="settings-details">
                     <summary>Settings</summary>
                     <div class="settings">
                         <label>
-                            Work Duration (minutes):
+                            Focus Duration (minutes):
                             <input type="number" id="workMinutes" min="1" value="30">
                         </label>
                         <label>
@@ -115,6 +79,23 @@
                         </label>
                     </div>
                 </details>
+            </section>
+
+            <!-- Categories -->
+            <section class="category-section">
+                <h2>Categories</h2>
+                <p class="section-hint">Click a category to start a focus session.</p>
+                <div class="category-input">
+                    <input
+                        type="text"
+                        id="categoryInput"
+                        placeholder="Add a category..."
+                        autocomplete="off"
+                    >
+                    <div id="colorPalette" class="color-palette"></div>
+                    <button id="addCategoryBtn">Add</button>
+                </div>
+                <ul id="categoryList" class="category-list"></ul>
             </section>
         </main>
     </div>
