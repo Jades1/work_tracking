@@ -1,0 +1,331 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #333;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+header h1 {
+    font-size: 24px;
+    color: #667eea;
+}
+
+.daily-total {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.daily-total .label {
+    color: #999;
+}
+
+.daily-total .time {
+    color: #667eea;
+}
+
+main {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+section {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+section h2 {
+    margin-bottom: 15px;
+    color: #333;
+    font-size: 18px;
+}
+
+.task-input {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.task-input input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.task-input input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+button:hover {
+    transform: translateY(-2px);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+.btn-primary {
+    background: #667eea;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #5568d3;
+}
+
+.btn-secondary {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.btn-secondary:hover {
+    background: #e0e0e0;
+}
+
+.btn-danger {
+    background: #ef5350;
+    color: white;
+    padding: 8px 12px;
+    font-size: 12px;
+}
+
+.btn-danger:hover {
+    background: #e53935;
+}
+
+.task-list {
+    list-style: none;
+}
+
+.task-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-left: 4px solid #ddd;
+    margin-bottom: 10px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.task-item:hover {
+    background: #f9f9f9;
+    border-left-color: #667eea;
+}
+
+.task-item.active {
+    background: #f0f4ff;
+    border-left-color: #667eea;
+    font-weight: 600;
+}
+
+.task-item-left {
+    flex: 1;
+}
+
+.task-item-name {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.task-item-time {
+    font-size: 12px;
+    color: #999;
+}
+
+.task-item-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.timer-area,
+.pomodoro-area {
+    padding: 20px;
+    background: #f9f9f9;
+    border-radius: 8px;
+    text-align: center;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.no-task,
+.no-session {
+    color: #999;
+    font-size: 14px;
+}
+
+.timer-display {
+    font-size: 48px;
+    font-weight: 700;
+    color: #667eea;
+    margin: 20px 0;
+    font-family: 'Courier New', monospace;
+}
+
+.timer-controls {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.pomodoro-info {
+    margin-bottom: 15px;
+    font-size: 14px;
+    color: #666;
+}
+
+.pomodoro-display {
+    font-size: 48px;
+    font-weight: 700;
+    color: #667eea;
+    margin: 20px 0;
+    font-family: 'Courier New', monospace;
+}
+
+.pomodoro-status {
+    font-size: 14px;
+    color: #999;
+    margin-bottom: 10px;
+}
+
+.pomodoro-controls {
+    margin-bottom: 15px;
+}
+
+.settings-details {
+    margin-top: 15px;
+    border-top: 1px solid #ddd;
+    padding-top: 15px;
+}
+
+.settings-details summary {
+    cursor: pointer;
+    color: #667eea;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.settings-details summary:hover {
+    text-decoration: underline;
+}
+
+.settings {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.settings label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.settings input {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    width: 60px;
+    text-align: center;
+}
+
+.settings input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+/* Mobile responsive */
+@media (max-width: 600px) {
+    .container {
+        padding: 12px;
+    }
+
+    header {
+        padding: 15px;
+        flex-direction: column;
+        gap: 12px;
+        text-align: center;
+    }
+
+    header h1 {
+        font-size: 20px;
+    }
+
+    section {
+        padding: 15px;
+    }
+
+    section h2 {
+        font-size: 16px;
+    }
+
+    .timer-display,
+    .pomodoro-display {
+        font-size: 36px;
+    }
+
+    .task-input {
+        flex-direction: column;
+    }
+
+    .task-input button {
+        width: 100%;
+    }
+
+    button {
+        padding: 12px 16px;
+        font-size: 16px;
+    }
+
+    .btn-primary {
+        width: 100%;
+    }
+}
