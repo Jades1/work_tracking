@@ -16,14 +16,30 @@ class Storage {
         this.user = null;
         this.syncEnabled = false;
         this.subscriptions = [];
+        this.supabaseInitialized = false;
 
         this.loadFromLocalStorage();
-        this.initSupabase();
     }
 
     async initSupabase() {
+        if (this.supabaseInitialized) return;
+
         if (!window.CONFIG || !window.CONFIG.supabaseUrl || !window.CONFIG.supabaseAnonKey) {
             console.warn('Supabase config not found; running offline-only');
+            this.supabaseInitialized = true;
+            return;
+        }
+
+        // Wait for Supabase client to be available
+        let retries = 0;
+        while (!window.supabase && retries < 20) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            retries++;
+        }
+
+        if (!window.supabase) {
+            console.warn('Supabase client failed to load; running offline-only');
+            this.supabaseInitialized = true;
             return;
         }
 
@@ -31,6 +47,7 @@ class Storage {
             // Load Supabase client from CDN
             const { createClient } = window.supabase;
             this.supabase = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
+            console.log('Supabase initialized successfully');
 
             // Listen for auth state changes
             this.supabase.auth.onAuthStateChange((event, session) => {
@@ -45,22 +62,36 @@ class Storage {
                 // Notify app of auth change
                 if (window.app) window.app.onAuthChange?.(this.user);
             });
+            this.supabaseInitialized = true;
         } catch (e) {
             console.error('Failed to initialize Supabase:', e);
+            this.supabaseInitialized = true;
         }
     }
 
     // Auth methods
     async signInWithGoogle() {
-        if (!this.supabase) throw new Error('Supabase not initialized');
-        const { data, error } = await this.supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-                redirectTo: window.location.origin + window.location.pathname
-            }
-        });
-        if (error) throw error;
-        return data;
+        // Initialize Supabase if not already done
+        if (!this.supabaseInitialized) {
+            await this.initSupabase();
+        }
+
+        if (!this.supabase) {
+            throw new Error('Supabase not initialized. Please refresh the page and try again.');
+        }
+        try {
+            const { data, error } = await this.supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin + window.location.pathname
+                }
+            });
+            if (error) throw error;
+            return data;
+        } catch (e) {
+            console.error('Sign in error:', e);
+            throw e;
+        }
     }
 
     async signOut() {
