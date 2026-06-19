@@ -1,3 +1,5 @@
-config.js
+# config.js holds the Supabase URL + anon key. The anon key is designed to be
+# public in client-side apps (data is protected by Row-Level Security), so it is
+# committed here so the GitHub Pages site can initialize Supabase.
 node_modules/
 .DS_Store
