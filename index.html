@@ -14,12 +14,30 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23667eea' width='100' height='100'/><text x='50' y='50' font-size='60' font-weight='bold' text-anchor='middle' dominant-baseline='middle' fill='white'>⏱</text></svg>">
 </head>
 <body>
+    <!-- Auth modal -->
+    <div id="authModal" class="modal">
+        <div class="modal-content">
+            <h2>Sign In</h2>
+            <p>Sign in to sync your data across devices</p>
+            <button id="googleSignInBtn" class="btn-primary">Sign in with Google</button>
+            <p class="auth-note">Your data is encrypted and only visible to you</p>
+        </div>
+    </div>
+
     <div class="container">
         <header>
-            <h1>Time Tracker</h1>
-            <div class="daily-total">
-                <span class="label">Today:</span>
-                <span id="dailyTotal" class="time">0h 0m</span>
+            <div class="header-left">
+                <h1>Time Tracker</h1>
+            </div>
+            <div class="header-right">
+                <div class="daily-total">
+                    <span class="label">Today:</span>
+                    <span id="dailyTotal" class="time">0h 0m</span>
+                </div>
+                <div id="authStatus" class="auth-status">
+                    <span id="userEmail" class="user-email"></span>
+                    <button id="signOutBtn" class="btn-secondary" style="display: none;">Sign Out</button>
+                </div>
             </div>
         </header>
 
@@ -76,6 +94,9 @@
     <audio id="alarmSound" preload="auto">
         <!-- Placeholder for alarm sound; will be filled in later -->
     </audio>
+
+    <!-- Supabase client library -->
+    <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script src="config.js"></script>
     <script src="storage.js"></script>

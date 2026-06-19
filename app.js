@@ -12,12 +12,63 @@ class App {
         this.pomodoroEndTime = null;
         this.pomodoroIntervalId = null;
 
+        this.user = null;
+
         this.initEventListeners();
+        this.checkAuthState();
+    }
+
+    checkAuthState() {
+        this.user = storage.getUser();
+        if (this.user) {
+            this.showApp();
+        } else {
+            this.showAuthModal();
+        }
+    }
+
+    onAuthChange(user) {
+        this.user = user;
+        if (user) {
+            this.showApp();
+        } else {
+            this.showAuthModal();
+        }
+    }
+
+    showAuthModal() {
+        document.getElementById('authModal').style.display = 'flex';
+        document.querySelector('.container').style.display = 'none';
         this.renderTaskList();
         this.updateDailyTotal();
     }
 
+    showApp() {
+        document.getElementById('authModal').style.display = 'none';
+        document.querySelector('.container').style.display = 'block';
+        this.updateAuthStatus();
+        this.renderTaskList();
+        this.updateDailyTotal();
+    }
+
+    updateAuthStatus() {
+        const userEmail = document.getElementById('userEmail');
+        const signOutBtn = document.getElementById('signOutBtn');
+
+        if (this.user) {
+            userEmail.textContent = this.user.email;
+            signOutBtn.style.display = 'inline-block';
+        } else {
+            userEmail.textContent = '';
+            signOutBtn.style.display = 'none';
+        }
+    }
+
     initEventListeners() {
+        // Auth
+        document.getElementById('googleSignInBtn').addEventListener('click', () => this.signInWithGoogle());
+        document.getElementById('signOutBtn').addEventListener('click', () => this.signOut());
+
         // Task input
         document.getElementById('addTaskBtn').addEventListener('click', () => this.addTask());
         document.getElementById('taskInput').addEventListener('keypress', (e) => {
@@ -39,6 +90,25 @@ class App {
         const settings = storage.getSettings();
         document.getElementById('workMinutes').value = settings.workMinutes;
         document.getElementById('breakMinutes').value = settings.breakMinutes;
+    }
+
+    async signInWithGoogle() {
+        try {
+            document.getElementById('googleSignInBtn').disabled = true;
+            document.getElementById('googleSignInBtn').textContent = 'Signing in...';
+            await storage.signInWithGoogle();
+        } catch (e) {
+            console.error('Sign in failed:', e);
+            alert('Sign in failed: ' + e.message);
+            document.getElementById('googleSignInBtn').disabled = false;
+            document.getElementById('googleSignInBtn').textContent = 'Sign in with Google';
+        }
+    }
+
+    async signOut() {
+        if (confirm('Sign out? You will lose access to cloud sync.')) {
+            await storage.signOut();
+        }
     }
 
     // Task Management

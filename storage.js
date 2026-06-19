@@ -1,5 +1,4 @@
-// Storage wrapper: provides a unified interface for localStorage + Supabase
-// For now, this uses localStorage only; Supabase sync will be layered on later
+// Storage wrapper: localStorage (offline cache) + Supabase (cloud sync)
 
 class Storage {
     constructor() {
@@ -12,10 +11,68 @@ class Storage {
                 alarmSound: 'default'
             }
         };
+
+        this.supabase = null;
+        this.user = null;
+        this.syncEnabled = false;
+        this.subscriptions = [];
+
         this.loadFromLocalStorage();
+        this.initSupabase();
     }
 
-    // Initialize data from localStorage
+    async initSupabase() {
+        if (!window.CONFIG || !window.CONFIG.supabaseUrl || !window.CONFIG.supabaseAnonKey) {
+            console.warn('Supabase config not found; running offline-only');
+            return;
+        }
+
+        try {
+            // Load Supabase client from CDN
+            const { createClient } = window.supabase;
+            this.supabase = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
+
+            // Listen for auth state changes
+            this.supabase.auth.onAuthStateChange((event, session) => {
+                this.user = session?.user || null;
+                if (this.user) {
+                    this.syncEnabled = true;
+                    this.pullFromCloud();
+                } else {
+                    this.syncEnabled = false;
+                    this.unsubscribeAll();
+                }
+                // Notify app of auth change
+                if (window.app) window.app.onAuthChange?.(this.user);
+            });
+        } catch (e) {
+            console.error('Failed to initialize Supabase:', e);
+        }
+    }
+
+    // Auth methods
+    async signInWithGoogle() {
+        if (!this.supabase) throw new Error('Supabase not initialized');
+        const { data, error } = await this.supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: window.location.origin + window.location.pathname
+            }
+        });
+        if (error) throw error;
+        return data;
+    }
+
+    async signOut() {
+        if (!this.supabase) return;
+        await this.supabase.auth.signOut();
+    }
+
+    getUser() {
+        return this.user;
+    }
+
+    // Local storage
     loadFromLocalStorage() {
         const stored = localStorage.getItem('workTrackerData');
         if (stored) {
@@ -29,27 +86,154 @@ class Storage {
         }
     }
 
-    // Save to localStorage
     saveToLocalStorage() {
         localStorage.setItem('workTrackerData', JSON.stringify(this.db));
     }
 
-    // Persist any changes to both localStorage and Supabase (when ready)
-    persist() {
+    // Unified persist: save to localStorage + sync to Supabase
+    async persist() {
         this.saveToLocalStorage();
-        // TODO: sync to Supabase
+        if (this.syncEnabled && this.supabase) {
+            try {
+                await this.syncToCloud();
+            } catch (e) {
+                console.error('Sync to cloud failed (will retry on next change):', e);
+            }
+        }
     }
 
-    // Tasks
+    // Cloud sync methods
+    async pullFromCloud() {
+        if (!this.supabase || !this.user) return;
+
+        try {
+            const [tasks, settings, timeEntries] = await Promise.all([
+                this.supabase.from('tasks').select('*').eq('user_id', this.user.id),
+                this.supabase.from('settings').select('*').eq('user_id', this.user.id).single(),
+                this.supabase.from('time_entries').select('*').eq('user_id', this.user.id)
+            ]);
+
+            if (tasks.error) throw tasks.error;
+            if (timeEntries.error) throw timeEntries.error;
+
+            // Merge cloud data with local (cloud takes precedence if newer)
+            this.db.tasks = tasks.data || [];
+            this.db.timeEntries = timeEntries.data || [];
+
+            if (settings.data) {
+                this.db.settings = {
+                    workMinutes: settings.data.work_minutes || 30,
+                    breakMinutes: settings.data.break_minutes || 5,
+                    alarmSound: settings.data.alarm_sound || 'default'
+                };
+            }
+
+            this.saveToLocalStorage();
+            this.setupRealtimeSubscriptions();
+        } catch (e) {
+            console.error('Failed to pull from cloud:', e);
+        }
+    }
+
+    async syncToCloud() {
+        if (!this.supabase || !this.user) return;
+
+        try {
+            // Sync tasks
+            for (const task of this.db.tasks) {
+                if (!task.deleted) {
+                    const { error } = await this.supabase.from('tasks').upsert({
+                        id: task.id,
+                        user_id: this.user.id,
+                        name: task.name,
+                        created_at: task.createdAt,
+                        deleted: false
+                    });
+                    if (error) throw error;
+                }
+            }
+
+            // Sync time entries
+            for (const entry of this.db.timeEntries) {
+                const { error } = await this.supabase.from('time_entries').upsert({
+                    id: entry.id,
+                    user_id: this.user.id,
+                    task_id: entry.taskId,
+                    start: entry.start,
+                    end: entry.end,
+                    duration_sec: entry.durationSec,
+                    type: entry.type
+                });
+                if (error) throw error;
+            }
+
+            // Sync settings
+            const { error: settingsError } = await this.supabase.from('settings').upsert({
+                user_id: this.user.id,
+                work_minutes: this.db.settings.workMinutes,
+                break_minutes: this.db.settings.breakMinutes,
+                alarm_sound: this.db.settings.alarmSound
+            });
+            if (settingsError) throw settingsError;
+        } catch (e) {
+            console.error('Failed to sync to cloud:', e);
+            throw e;
+        }
+    }
+
+    setupRealtimeSubscriptions() {
+        if (!this.supabase || !this.user) return;
+
+        this.unsubscribeAll();
+
+        // Subscribe to tasks changes
+        const tasksSub = this.supabase
+            .channel(`tasks:${this.user.id}`)
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'tasks', filter: `user_id=eq.${this.user.id}` },
+                (payload) => this.pullFromCloud()
+            )
+            .subscribe();
+
+        // Subscribe to time entries changes
+        const entriesSub = this.supabase
+            .channel(`time_entries:${this.user.id}`)
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'time_entries', filter: `user_id=eq.${this.user.id}` },
+                (payload) => this.pullFromCloud()
+            )
+            .subscribe();
+
+        // Subscribe to settings changes
+        const settingsSub = this.supabase
+            .channel(`settings:${this.user.id}`)
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'settings', filter: `user_id=eq.${this.user.id}` },
+                (payload) => this.pullFromCloud()
+            )
+            .subscribe();
+
+        this.subscriptions = [tasksSub, entriesSub, settingsSub];
+    }
+
+    unsubscribeAll() {
+        for (const sub of this.subscriptions) {
+            this.supabase.removeChannel(sub);
+        }
+        this.subscriptions = [];
+    }
+
+    // Task methods (same interface, now with sync)
     getTasks() {
-        return this.db.tasks;
+        return this.db.tasks.filter(t => !t.deleted);
     }
 
     addTask(name) {
         const task = {
             id: Date.now().toString(),
             name,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            deleted: false
         };
         this.db.tasks.push(task);
         this.persist();
@@ -66,13 +250,15 @@ class Storage {
     }
 
     deleteTask(id) {
-        this.db.tasks = this.db.tasks.filter(t => t.id !== id);
-        // Also remove any time entries for this task
+        const task = this.db.tasks.find(t => t.id === id);
+        if (task) {
+            task.deleted = true;
+        }
         this.db.timeEntries = this.db.timeEntries.filter(e => e.taskId !== id);
         this.persist();
     }
 
-    // Time entries
+    // Time entry methods
     addTimeEntry(taskId, startTime, endTime, type = 'tracked') {
         const durationSec = Math.floor((endTime - startTime) / 1000);
         const entry = {
@@ -88,12 +274,10 @@ class Storage {
         return entry;
     }
 
-    // Get all time entries for a task
     getTimeEntriesForTask(taskId) {
         return this.db.timeEntries.filter(e => e.taskId === taskId);
     }
 
-    // Get time entries for a specific date (defaults to today)
     getTimeEntriesForDate(date = new Date()) {
         const dateStr = date.toISOString().split('T')[0];
         return this.db.timeEntries.filter(e => {
@@ -102,7 +286,6 @@ class Storage {
         });
     }
 
-    // Calculate total time (in seconds) for a task on a specific date
     getTotalTimeForTaskOnDate(taskId, date = new Date()) {
         const entries = this.getTimeEntriesForDate(date);
         return entries
@@ -110,13 +293,12 @@ class Storage {
             .reduce((sum, e) => sum + e.durationSec, 0);
     }
 
-    // Calculate total time (in seconds) for a specific date
     getTotalTimeForDate(date = new Date()) {
         const entries = this.getTimeEntriesForDate(date);
         return entries.reduce((sum, e) => sum + e.durationSec, 0);
     }
 
-    // Settings
+    // Settings methods
     getSettings() {
         return this.db.settings;
     }

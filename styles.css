@@ -9,6 +9,50 @@ body {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: #333;
     line-height: 1.6;
+    min-height: 100vh;
+}
+
+/* Auth Modal */
+#authModal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    max-width: 400px;
+    text-align: center;
+}
+
+.modal-content h2 {
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.modal-content p {
+    color: #666;
+    margin-bottom: 25px;
+}
+
+#googleSignInBtn {
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+.auth-note {
+    font-size: 12px;
+    color: #999;
 }
 
 .container {
@@ -26,11 +70,23 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 20px;
+}
+
+.header-left {
+    flex: 1;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
 }
 
 header h1 {
     font-size: 24px;
     color: #667eea;
+    margin: 0;
 }
 
 .daily-total {
@@ -39,6 +95,7 @@ header h1 {
     gap: 10px;
     font-size: 18px;
     font-weight: 600;
+    white-space: nowrap;
 }
 
 .daily-total .label {
@@ -47,6 +104,17 @@ header h1 {
 
 .daily-total .time {
     color: #667eea;
+}
+
+.auth-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.user-email {
+    font-size: 14px;
+    color: #999;
 }
 
 main {
@@ -295,8 +363,22 @@ button:active {
         text-align: center;
     }
 
+    .header-left,
+    .header-right {
+        width: 100%;
+    }
+
+    .header-right {
+        flex-direction: column;
+    }
+
     header h1 {
         font-size: 20px;
+    }
+
+    .modal-content {
+        margin: 20px;
+        max-width: calc(100% - 40px);
     }
 
     section {
