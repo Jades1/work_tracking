@@ -77,6 +77,16 @@
                             Break Duration (minutes):
                             <input type="number" id="breakMinutes" min="1" value="5">
                         </label>
+                        <label>
+                            Alarm:
+                            <select id="alarmSound">
+                                <option value="beep">Beep</option>
+                                <option value="chime">Chime</option>
+                                <option value="bell">Bell</option>
+                                <option value="flash">Screen Flash</option>
+                            </select>
+                        </label>
+                        <button id="testAlarmBtn" class="btn-secondary">Test Alarm</button>
                     </div>
                 </details>
             </section>
@@ -100,9 +110,8 @@
         </main>
     </div>
 
-    <audio id="alarmSound" preload="auto">
-        <!-- Placeholder for alarm sound; will be filled in later -->
-    </audio>
+    <!-- Visual alarm: full-screen overlay used by the "Screen Flash" alarm option -->
+    <div id="flashOverlay" class="flash-overlay"></div>
 
     <!-- Supabase client library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7"></script>

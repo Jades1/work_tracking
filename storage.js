@@ -8,7 +8,7 @@ class Storage {
             settings: {
                 workMinutes: 30,
                 breakMinutes: 5,
-                alarmSound: 'default'
+                alarmSound: 'beep'
             }
         };
 
@@ -157,7 +157,7 @@ class Storage {
                 this.db.settings = {
                     workMinutes: settings.data.work_minutes || 30,
                     breakMinutes: settings.data.break_minutes || 5,
-                    alarmSound: settings.data.alarm_sound || 'default'
+                    alarmSound: settings.data.alarm_sound || 'beep'
                 };
             }
 

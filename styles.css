@@ -535,6 +535,46 @@ button:active {
     border-color: #2563eb;
 }
 
+.settings select {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    background: white;
+}
+
+.settings select:focus {
+    outline: none;
+    border-color: #2563eb;
+}
+
+#testAlarmBtn {
+    align-self: flex-start;
+    margin-top: 4px;
+}
+
+/* Visual alarm overlay (Screen Flash option) */
+.flash-overlay {
+    position: fixed;
+    inset: 0;
+    background: #2563eb;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 2000;
+}
+
+.flash-overlay.flashing {
+    animation: flashTwice 0.7s ease;
+}
+
+@keyframes flashTwice {
+    0%   { opacity: 0; }
+    20%  { opacity: 0.9; }
+    40%  { opacity: 0; }
+    60%  { opacity: 0.9; }
+    100% { opacity: 0; }
+}
+
 /* Mobile responsive */
 @media (max-width: 600px) {
     .container {

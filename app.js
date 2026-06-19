@@ -23,6 +23,9 @@ class App {
         this.sessionIntervalId = null;
         this.workSegmentStart = null;
 
+        // Shared audio context for alarms (created/resumed on a user gesture)
+        this.audioCtx = null;
+
         this.user = null;
 
         this.initEventListeners();
@@ -100,10 +103,21 @@ class App {
             storage.updateSettings({ breakMinutes: parseInt(e.target.value) });
         });
 
+        // Alarm selection
+        const alarmSelect = document.getElementById('alarmSound');
+        alarmSelect.addEventListener('change', (e) => {
+            storage.updateSettings({ alarmSound: e.target.value });
+        });
+        document.getElementById('testAlarmBtn').addEventListener('click', () => {
+            this.getAudioContext(); // unlock/resume audio on this user gesture
+            this.playAlarm();
+        });
+
         // Initialize settings UI
         const settings = storage.getSettings();
         document.getElementById('workMinutes').value = settings.workMinutes;
         document.getElementById('breakMinutes').value = settings.breakMinutes;
+        alarmSelect.value = this.getAlarmChoice();
     }
 
     async signInWithEmail() {
@@ -332,6 +346,7 @@ class App {
     }
 
     startSession(categoryId) {
+        this.getAudioContext(); // unlock/resume audio while we have a user gesture
         this.activeCategoryId = categoryId;
         this.sessionRunning = true;
         this.beginWork();
@@ -434,26 +449,89 @@ class App {
         this.renderTimeline();
     }
 
-    playAlarm() {
-        // Simple beep using Web Audio API
+    // Alarms
+    getAlarmChoice() {
+        const choice = storage.getSettings().alarmSound;
+        return ['beep', 'chime', 'bell', 'flash'].includes(choice) ? choice : 'beep';
+    }
+
+    getAudioContext() {
         try {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-
-            oscillator.frequency.value = 800;
-            oscillator.type = 'sine';
-
-            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-
-            oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 0.5);
+            if (!this.audioCtx) {
+                this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (this.audioCtx.state === 'suspended') {
+                this.audioCtx.resume();
+            }
         } catch (e) {
-            console.log('Audio context unavailable, using fallback');
+            console.log('Audio context unavailable:', e);
+            this.audioCtx = null;
+        }
+        return this.audioCtx;
+    }
+
+    // Play a single tone with a quick attack and exponential decay
+    playTone(ctx, freq, startOffset, duration, type = 'sine', peak = 0.3) {
+        const t = ctx.currentTime + startOffset;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(peak, t + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+        osc.start(t);
+        osc.stop(t + duration + 0.03);
+    }
+
+    playBeep(ctx) {
+        this.playTone(ctx, 880, 0, 0.15, 'sine', 0.3);
+        this.playTone(ctx, 880, 0.2, 0.15, 'sine', 0.3);
+    }
+
+    playChime(ctx) {
+        this.playTone(ctx, 523.25, 0, 0.25, 'sine', 0.3);    // C5
+        this.playTone(ctx, 659.25, 0.18, 0.25, 'sine', 0.3); // E5
+        this.playTone(ctx, 783.99, 0.36, 0.5, 'sine', 0.3);  // G5
+    }
+
+    playBell(ctx) {
+        // Fundamental plus partials with a long decay for a metallic ring
+        this.playTone(ctx, 587.33, 0, 1.6, 'triangle', 0.35);
+        this.playTone(ctx, 1174.66, 0, 1.4, 'sine', 0.15);
+        this.playTone(ctx, 1760, 0, 1.0, 'sine', 0.06);
+    }
+
+    flashScreen() {
+        const overlay = document.getElementById('flashOverlay');
+        if (!overlay) return;
+        overlay.classList.remove('flashing');
+        // Force reflow so the animation restarts even on back-to-back triggers
+        void overlay.offsetWidth;
+        overlay.classList.add('flashing');
+        overlay.addEventListener('animationend', () => {
+            overlay.classList.remove('flashing');
+        }, { once: true });
+    }
+
+    playAlarm() {
+        const choice = this.getAlarmChoice();
+
+        if (choice === 'flash') {
+            this.flashScreen();
+            return;
+        }
+
+        const ctx = this.getAudioContext();
+        if (!ctx) return;
+        try {
+            if (choice === 'chime') this.playChime(ctx);
+            else if (choice === 'bell') this.playBell(ctx);
+            else this.playBeep(ctx);
+        } catch (e) {
+            console.log('Alarm playback failed:', e);
         }
     }
 
