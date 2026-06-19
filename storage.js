@@ -24,7 +24,9 @@ class Storage {
     async initSupabase() {
         if (this.supabaseInitialized) return;
 
-        if (!window.CONFIG || !window.CONFIG.supabaseUrl || !window.CONFIG.supabaseAnonKey) {
+        // NOTE: config.js declares `const CONFIG`, which does NOT attach to
+        // window. Reference the bare global via scope chain, not window.CONFIG.
+        if (typeof CONFIG === 'undefined' || !CONFIG.supabaseUrl || !CONFIG.supabaseAnonKey) {
             console.warn('Supabase config not found; running offline-only');
             this.supabaseInitialized = true;
             return;
