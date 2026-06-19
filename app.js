@@ -192,6 +192,54 @@ class App {
                 }
             });
         });
+
+        // Render timeline
+        this.renderTimeline();
+    }
+
+    renderTimeline() {
+        const grid = document.getElementById('timelineGrid');
+        const entries = storage.getTimeEntriesForDate();
+        const tasks = storage.getTasks();
+
+        if (entries.length === 0) {
+            grid.innerHTML = '<div class="timeline-empty">No time tracked yet today</div>';
+            return;
+        }
+
+        // Find min/max times to determine scale
+        const startOfDay = new Date();
+        startOfDay.setHours(8, 0, 0, 0);
+        const endOfDay = new Date();
+        endOfDay.setHours(18, 0, 0, 0);
+
+        const dayDuration = endOfDay - startOfDay;
+        const gridHeight = 360; // 6 hours * 60px per hour
+
+        grid.innerHTML = entries.map((entry, idx) => {
+            const entryStart = new Date(entry.start);
+            const entryEnd = new Date(entry.end);
+            const task = tasks.find(t => t.id === entry.taskId);
+
+            // Calculate position and height
+            const offsetMs = Math.max(0, entryStart - startOfDay);
+            const topPercent = (offsetMs / dayDuration) * 100;
+            const durationMs = entryEnd - entryStart;
+            const heightPercent = (durationMs / dayDuration) * 100;
+
+            const taskIndex = (tasks.findIndex(t => t.id === entry.taskId) % 6) + 1;
+            const timeStr = `${entryStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}-${entryEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+            return `
+                <div
+                    class="timeline-block task-${taskIndex}"
+                    style="top: ${topPercent}%; height: ${heightPercent}%;"
+                    title="${task?.name || 'Unknown'} - ${timeStr}"
+                >
+                    ${this.escapeHtml(task?.name || 'Unnamed')}
+                </div>
+            `;
+        }).join('');
     }
 
     // Time Tracking
@@ -258,6 +306,7 @@ class App {
         const totalSec = storage.getTotalTimeForDate();
         const timeStr = this.formatSeconds(totalSec);
         document.getElementById('dailyTotal').textContent = timeStr;
+        this.renderTimeline();
     }
 
     // Pomodoro
