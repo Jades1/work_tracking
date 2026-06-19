@@ -30,9 +30,9 @@ class Storage {
             return;
         }
 
-        // Wait for Supabase client to be available
+        // Wait for Supabase client to be available (up to 5 seconds)
         let retries = 0;
-        while (!window.supabase && retries < 20) {
+        while (!window.supabase && retries < 50) {
             await new Promise(resolve => setTimeout(resolve, 100));
             retries++;
         }
