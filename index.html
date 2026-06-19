@@ -131,10 +131,18 @@
     <script src="app.js"></script>
 
     <script>
+        // Service worker is DISABLED during development — it was caching stale
+        // JS and serving old code. This block self-heals any browser that still
+        // has the old worker registered: unregister it and wipe its caches so
+        // fresh files load directly from the server. Re-enable a SW (with
+        // skipWaiting + clients.claim) once the app is stable for offline use.
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('service-worker.js')
-                .then((reg) => console.log('Service Worker registered'))
-                .catch((err) => console.log('Service Worker registration failed:', err));
+            navigator.serviceWorker.getRegistrations().then((regs) => {
+                regs.forEach((reg) => reg.unregister());
+            });
+            if (window.caches) {
+                caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+            }
         }
     </script>
 </body>
