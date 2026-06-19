@@ -159,8 +159,8 @@ class Storage {
                     id: entry.id,
                     user_id: this.user.id,
                     task_id: entry.taskId,
-                    start: entry.start,
-                    end: entry.end,
+                    "start": entry.start,
+                    "end": entry.end,
                     duration_sec: entry.durationSec,
                     type: entry.type
                 });

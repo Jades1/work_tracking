@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS time_entries (
     id TEXT PRIMARY KEY,
     user_id UUID NOT NULL DEFAULT auth.uid(),
     task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    start TIMESTAMP NOT NULL,
-    end TIMESTAMP NOT NULL,
+    "start" TIMESTAMP NOT NULL,
+    "end" TIMESTAMP NOT NULL,
     duration_sec INTEGER NOT NULL,
     type TEXT NOT NULL DEFAULT 'tracked', -- 'tracked' or 'pomodoro-work'
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
