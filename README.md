@@ -10,7 +10,8 @@ A personal time-tracking + Pomodoro webapp that syncs across devices and runs on
 - **Alarm sound** — Audio notification when each Pomodoro period ends
 - **Cross-device sync** — Data syncs in real time across laptop and phone via Supabase
 - **Mobile-friendly** — Responsive design; use "Add to Home Screen" to make it feel like an app
-- **Offline support** — localStorage keeps the app working offline; changes sync when you come back online
+- **Offline support** — Service worker caches the app; works offline and syncs when you come back online
+- **Web app manifest** — Install on home screen; full-screen standalone mode
 
 ## Getting started
 
@@ -25,13 +26,35 @@ A personal time-tracking + Pomodoro webapp that syncs across devices and runs on
 
 See `CLAUDE.md` for the build milestones and architecture notes.
 
+### Installing as a Web App ("Add to Home Screen")
+
+The app is fully installable on both desktop and mobile devices:
+
+**On Android (Chrome):**
+1. Open the app URL in Chrome
+2. Tap the menu (three dots) → "Install app" or look for the install banner at the bottom
+3. Confirm to add it to your home screen
+
+**On iPhone (Safari):**
+1. Open the app URL in Safari
+2. Tap the Share button (box with arrow)
+3. Select "Add to Home Screen"
+4. Choose a name and tap "Add"
+
+**On Mac/Windows (Chrome/Edge):**
+1. Open the app URL in your browser
+2. Click the install icon (usually in the address bar or menu)
+3. Confirm to install
+
+Once installed, the app runs in full-screen mode with offline support.
+
 ### Deploying to GitHub Pages
 
 1. Push the repo to GitHub
 2. Go to the repo settings → Pages
 3. Set Source to "Deploy from a branch" and select `main` / root folder
 4. The app will be live at `https://username.github.io/work_tracking`
-5. On mobile, open the URL and tap "Add to Home Screen" to install as an app
+5. On any device, visit the URL and use "Add to Home Screen" (see above)
 
 ### Configuring Supabase (for cross-device sync)
 
