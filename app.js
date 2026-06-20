@@ -24,6 +24,8 @@ class App {
         this.sessionEndTime = null;
         this.sessionIntervalId = null;
         this.workSegmentStart = null;
+        this.workPeriodsCompleted = 0; // completed focus periods in the current session
+        this.timerWorker = null; // Web Worker that drives ticks (background-resilient)
 
         // Shared audio context for alarms (created/resumed on a user gesture)
         this.audioCtx = null;
@@ -124,6 +126,10 @@ class App {
         document.getElementById('breakMinutes').addEventListener('change', (e) => {
             storage.updateSettings({ breakMinutes: parseInt(e.target.value) });
         });
+        document.getElementById('repetitions').addEventListener('change', (e) => {
+            const v = parseInt(e.target.value);
+            storage.updateSettings({ repetitions: isNaN(v) || v < 0 ? 0 : v });
+        });
 
         // Alarm selection
         const alarmSelect = document.getElementById('alarmSound');
@@ -141,7 +147,8 @@ class App {
             const tag = document.activeElement?.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
             if (!this.selectedEntryId) return;
-            storage.deleteTimeEntry(this.selectedEntryId);
+            // A timeline block may represent several merged entries (comma-joined ids)
+            this.selectedEntryId.split(',').forEach(id => storage.deleteTimeEntry(id));
             this.selectedEntryId = null;
             this.updateTimelineHint(false);
             this.updateDailyTotal();
@@ -194,10 +201,16 @@ class App {
             });
         });
 
+        // Resume the (often auto-suspended) audio context when returning to the tab
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) this.getAudioContext();
+        });
+
         // Initialize settings UI
         const settings = storage.getSettings();
         document.getElementById('workMinutes').value = settings.workMinutes;
         document.getElementById('breakMinutes').value = settings.breakMinutes;
+        document.getElementById('repetitions').value = settings.repetitions ?? 0;
         alarmSelect.value = this.getAlarmChoice();
     }
 
@@ -470,6 +483,32 @@ class App {
             hourLabels += `<div class="timeline-hour-label" style="top:${h * PX_PER_HOUR}px">${this.formatHour(labelDate)}</div>`;
         }
 
+        // Consecutive same-category entries with only a short gap between them (i.e.
+        // an uninterrupted focus session — break gaps absorbed, no switch to another
+        // category) are merged into one continuous block. Threshold = break + buffer.
+        const mergeGapMs = (storage.getSettings().breakMinutes || 5) * 60000 + 120000;
+        const mergeSegments = (catEntries, past) => {
+            const sorted = catEntries
+                .map(e => ({
+                    id: e.id,
+                    s: past ? normalizeTime(e.start) : new Date(e.start),
+                    en: past ? normalizeTime(e.end) : new Date(e.end)
+                }))
+                .sort((a, b) => a.s - b.s);
+            const segs = [];
+            for (const e of sorted) {
+                const last = segs[segs.length - 1];
+                if (last && (e.s - last.en) <= mergeGapMs) {
+                    last.en = e.en;
+                    last.workMs += (e.en - e.s);
+                    last.ids.push(e.id);
+                } else {
+                    segs.push({ start: e.s, en: e.en, workMs: (e.en - e.s), ids: [e.id] });
+                }
+            }
+            return segs;
+        };
+
         // Build column HTML for a set of entries; past=true normalizes times to today
         const buildColumns = (entries, past) => {
             const cols = categories.filter(cat => entries.some(e => e.taskId === cat.id));
@@ -478,20 +517,16 @@ class App {
             }
             return cols.map(cat => {
                 const color = cat.color || '#2563eb';
-                const blocks = entries
-                    .filter(e => e.taskId === cat.id)
-                    .map(e => {
-                        const s = past ? normalizeTime(e.start) : new Date(e.start);
-                        const en = past ? normalizeTime(e.end) : new Date(e.end);
-                        const top = ((s - windowStart) / HOUR_MS) * PX_PER_HOUR;
-                        const height = Math.max(16, ((en - s) / HOUR_MS) * PX_PER_HOUR);
-                        const mins = Math.max(1, Math.round((en - s) / 60000));
-                        const rawStart = new Date(e.start);
-                        const rawEnd = new Date(e.end);
-                        const timeStr = `${rawStart.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}–${rawEnd.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-                        const isSelected = e.id === this.selectedEntryId;
+                const blocks = mergeSegments(entries.filter(e => e.taskId === cat.id), past)
+                    .map(seg => {
+                        const top = ((seg.start - windowStart) / HOUR_MS) * PX_PER_HOUR;
+                        const height = Math.max(16, ((seg.en - seg.start) / HOUR_MS) * PX_PER_HOUR);
+                        const mins = Math.max(1, Math.round(seg.workMs / 60000));
+                        const timeStr = `${seg.start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}–${seg.en.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                        const idAttr = seg.ids.join(',');
+                        const isSelected = idAttr === this.selectedEntryId;
                         const pastClass = past ? ' timeline-block--past' : '';
-                        return `<div class="timeline-block${isSelected ? ' selected' : ''}${pastClass}" data-entry-id="${e.id}" style="top:${top}px; height:${height}px; background:${color}" title="${this.escapeHtml(cat.name)} · ${timeStr}">${mins}m</div>`;
+                        return `<div class="timeline-block${isSelected ? ' selected' : ''}${pastClass}" data-entry-id="${idAttr}" style="top:${top}px; height:${height}px; background:${color}" title="${this.escapeHtml(cat.name)} · ${timeStr}">${mins}m</div>`;
                     }).join('');
 
                 return `
@@ -541,33 +576,108 @@ class App {
 
     startSession(categoryId) {
         this.getAudioContext(); // unlock/resume audio while we have a user gesture
+        this.requestNotifyPermission(); // ask once, on this user gesture
         this.activeCategoryId = categoryId;
         this.sessionRunning = true;
+        this.workPeriodsCompleted = 0;
         this.beginWork();
-        this.sessionIntervalId = setInterval(() => this.updateSessionDisplay(), 200);
-        this.updateSessionDisplay();
+        this.renderSessionShell();
+        this.startTicking();
+        this.onTick();
         this.renderCategoryList();
     }
 
-    beginWork() {
+    // Period boundaries are timestamp-based: each new period starts exactly at the
+    // previous period's end (`from`), so logged blocks stay accurate even if ticks
+    // were throttled while the tab was backgrounded. `from` omitted = start now.
+    beginWork(from) {
         const settings = storage.getSettings();
+        const start = from || new Date();
         this.sessionMode = 'work';
-        this.workSegmentStart = new Date();
-        this.sessionEndTime = new Date(Date.now() + settings.workMinutes * 60 * 1000);
+        this.workSegmentStart = start;
+        this.sessionEndTime = new Date(start.getTime() + settings.workMinutes * 60 * 1000);
     }
 
-    beginBreak() {
+    beginBreak(from) {
         const settings = storage.getSettings();
+        const start = from || new Date();
         this.sessionMode = 'break';
         this.workSegmentStart = null;
-        this.sessionEndTime = new Date(Date.now() + settings.breakMinutes * 60 * 1000);
+        this.sessionEndTime = new Date(start.getTime() + settings.breakMinutes * 60 * 1000);
+    }
+
+    getRepetitions() {
+        const r = parseInt(storage.getSettings().repetitions);
+        return isNaN(r) || r < 0 ? 0 : r;
+    }
+
+    // --- Tick driver (Web Worker, with a setInterval fallback) ---
+    startTicking() {
+        if (window.Worker) {
+            try {
+                if (!this.timerWorker) {
+                    this.timerWorker = new Worker('timer-worker.js');
+                    this.timerWorker.onmessage = () => this.onTick();
+                }
+                this.timerWorker.postMessage('start');
+                return;
+            } catch (e) {
+                console.warn('Timer worker unavailable; using setInterval fallback', e);
+            }
+        }
+        this.sessionIntervalId = setInterval(() => this.onTick(), 250);
+    }
+
+    stopTicking() {
+        if (this.timerWorker) this.timerWorker.postMessage('stop');
+        if (this.sessionIntervalId) {
+            clearInterval(this.sessionIntervalId);
+            this.sessionIntervalId = null;
+        }
+    }
+
+    onTick() {
+        if (!this.sessionRunning) return;
+        // Process any elapsed period boundaries (also catches up after background throttling)
+        while (this.sessionRunning && Date.now() >= this.sessionEndTime.getTime()) {
+            this.handlePeriodEnd();
+        }
+        if (!this.sessionRunning) return;
+        const remainingSec = Math.max(0, Math.floor((this.sessionEndTime.getTime() - Date.now()) / 1000));
+        this.updateSessionTimeText(remainingSec);
+    }
+
+    handlePeriodEnd() {
+        this.playAlarm();
+        const boundary = new Date(this.sessionEndTime); // exact end of the period that just finished
+
+        if (this.sessionMode === 'work') {
+            storage.addTimeEntry(this.activeCategoryId, this.workSegmentStart, boundary, 'pomodoro-work');
+            this.workPeriodsCompleted++;
+            this.updateDailyTotal();
+            this.renderCategoryList();
+
+            const reps = this.getRepetitions();
+            if (reps > 0 && this.workPeriodsCompleted >= reps) {
+                // Final set done — stop cleanly (block already logged, so no partial re-log)
+                this.notify('Session complete', `Finished ${reps} set${reps > 1 ? 's' : ''} of focus.`);
+                this.workSegmentStart = null;
+                this.stopSession();
+                return;
+            }
+            this.notify('Break time', 'Focus period done — take a break.');
+            this.beginBreak(boundary);
+        } else {
+            this.notify('Back to focus', 'Break over — back to work.');
+            this.beginWork(boundary);
+        }
     }
 
     stopSession() {
         if (!this.sessionRunning) return;
 
         this.sessionRunning = false;
-        clearInterval(this.sessionIntervalId);
+        this.stopTicking();
 
         // Log partial work if we stopped mid-work session
         if (this.sessionMode === 'work' && this.workSegmentStart) {
@@ -585,34 +695,13 @@ class App {
         this.renderSessionArea();
     }
 
-    updateSessionDisplay() {
-        if (!this.sessionRunning) return;
-
-        const now = new Date();
-        const remaining = Math.max(0, this.sessionEndTime - now);
-        const remainingSec = Math.floor(remaining / 1000);
-
-        if (remaining <= 0) {
-            this.playAlarm();
-            if (this.sessionMode === 'work') {
-                // Log the completed work block, then roll into a break
-                storage.addTimeEntry(this.activeCategoryId, this.workSegmentStart, this.sessionEndTime, 'pomodoro-work');
-                this.updateDailyTotal();
-                this.renderCategoryList();
-                this.beginBreak();
-            } else {
-                // Break finished — back to work (timer keeps running)
-                this.beginWork();
-            }
-            this.updateSessionDisplay();
-            return;
-        }
-
+    // Build the session UI once. The Stop button is a stable node with a real
+    // listener so it can't be destroyed mid-click (the old per-tick innerHTML
+    // rebuild was dropping clicks — that's why "Stop" sometimes didn't work).
+    renderSessionShell() {
         const category = storage.getTasks().find(c => c.id === this.activeCategoryId);
         const color = category?.color || '#2563eb';
         const name = this.escapeHtml(category?.name || 'Session');
-        const modeLabel = this.sessionMode === 'work' ? 'Focus' : 'Break';
-        const timeStr = this.formatSeconds(remainingSec);
 
         const area = document.getElementById('sessionArea');
         area.innerHTML = `
@@ -620,19 +709,47 @@ class App {
                 <span class="category-dot" style="background:${color}"></span>
                 <span class="session-category-name">${name}</span>
             </div>
-            <div class="session-status session-${this.sessionMode}">${modeLabel}</div>
-            <div class="session-display" style="color:${color}">${timeStr}</div>
-            <button class="btn-secondary" onclick="app.stopSession()">Stop</button>
+            <div class="session-status session-${this.sessionMode}" id="sessionStatus">Focus</div>
+            <div class="session-display" id="sessionDisplay" style="color:${color}">--</div>
+            <button class="btn-secondary" id="stopSessionBtn">Stop</button>
         `;
+        document.getElementById('stopSessionBtn').addEventListener('click', () => this.stopSession());
+    }
+
+    updateSessionTimeText(remainingSec) {
+        const disp = document.getElementById('sessionDisplay');
+        const status = document.getElementById('sessionStatus');
+        if (!disp || !status) { this.renderSessionShell(); return; }
+        disp.textContent = this.formatSeconds(remainingSec);
+        status.textContent = this.sessionMode === 'work' ? 'Focus' : 'Break';
+        status.className = `session-status session-${this.sessionMode}`;
     }
 
     renderSessionArea() {
         const area = document.getElementById('sessionArea');
         if (this.sessionRunning) {
-            this.updateSessionDisplay();
+            this.renderSessionShell();
+            this.onTick();
         } else {
             area.innerHTML = '<p class="no-session">Click a category to start a focus session</p>';
         }
+    }
+
+    // --- Background notifications ---
+    requestNotifyPermission() {
+        try {
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        } catch (e) { /* not supported */ }
+    }
+
+    notify(title, body) {
+        try {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification(title, { body, tag: 'time-tracker-pomodoro', renotify: true });
+            }
+        } catch (e) { /* ignore */ }
     }
 
     // Daily total
@@ -646,7 +763,7 @@ class App {
     // Alarms
     getAlarmChoice() {
         const choice = storage.getSettings().alarmSound;
-        return ['beep', 'chime', 'bell', 'flash'].includes(choice) ? choice : 'beep';
+        return ['beep', 'chime', 'bell', 'flash', 'flash-beep'].includes(choice) ? choice : 'beep';
     }
 
     getAudioContext() {
@@ -713,9 +830,9 @@ class App {
     playAlarm() {
         const choice = this.getAlarmChoice();
 
-        if (choice === 'flash') {
+        if (choice === 'flash' || choice === 'flash-beep') {
             this.flashScreen();
-            return;
+            if (choice === 'flash') return;
         }
 
         const ctx = this.getAudioContext();
@@ -723,7 +840,7 @@ class App {
         try {
             if (choice === 'chime') this.playChime(ctx);
             else if (choice === 'bell') this.playBell(ctx);
-            else this.playBeep(ctx);
+            else this.playBeep(ctx); // 'beep' and 'flash-beep'
         } catch (e) {
             console.log('Alarm playback failed:', e);
         }

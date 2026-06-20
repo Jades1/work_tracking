@@ -8,7 +8,8 @@ class Storage {
             settings: {
                 workMinutes: 30,
                 breakMinutes: 5,
-                alarmSound: 'beep'
+                alarmSound: 'beep',
+                repetitions: 0 // 0 = unlimited; local-only (not synced to Supabase)
             }
         };
 
@@ -220,6 +221,7 @@ class Storage {
 
             if (settings.data) {
                 this.db.settings = {
+                    ...this.db.settings, // preserve local-only fields (e.g. repetitions)
                     workMinutes: settings.data.work_minutes || 30,
                     breakMinutes: settings.data.break_minutes || 5,
                     alarmSound: settings.data.alarm_sound || 'beep'

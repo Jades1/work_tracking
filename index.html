@@ -94,12 +94,17 @@
                             <input type="number" id="breakMinutes" min="1" value="5">
                         </label>
                         <label>
+                            Repetitions (sets, 0 = unlimited):
+                            <input type="number" id="repetitions" min="0" value="0">
+                        </label>
+                        <label>
                             Alarm:
                             <select id="alarmSound">
                                 <option value="beep">Beep</option>
                                 <option value="chime">Chime</option>
                                 <option value="bell">Bell</option>
                                 <option value="flash">Screen Flash</option>
+                                <option value="flash-beep">Flash + Beep</option>
                             </select>
                         </label>
                         <button id="testAlarmBtn" class="btn-secondary">Test Alarm</button>
