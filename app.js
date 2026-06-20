@@ -99,10 +99,10 @@ class App {
 
     initEventListeners() {
         // Auth
-        document.getElementById('signInBtn').addEventListener('click', () => this.signInWithEmail());
-        document.getElementById('backBtn').addEventListener('click', () => this.showAuthForm());
-        document.getElementById('authEmail').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.signInWithEmail();
+        document.getElementById('signInBtn').addEventListener('click', () => this.signInWithPassword());
+        document.getElementById('signUpBtn').addEventListener('click', () => this.signUpWithPassword());
+        document.getElementById('authPassword').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.signInWithPassword();
         });
         document.getElementById('signOutBtn').addEventListener('click', () => this.signOut());
         document.getElementById('offlineBtn').addEventListener('click', () => this.continueOffline());
@@ -201,37 +201,84 @@ class App {
         alarmSelect.value = this.getAlarmChoice();
     }
 
-    async signInWithEmail() {
+    async signInWithPassword() {
         const email = document.getElementById('authEmail').value.trim();
-        if (!email) {
-            alert('Please enter your email');
+        const password = document.getElementById('authPassword').value;
+        if (!email || !password) {
+            this.showAuthError('Enter your email and password.');
             return;
         }
 
+        const btn = document.getElementById('signInBtn');
+        btn.disabled = true;
+        btn.textContent = 'Signing in...';
         try {
-            document.getElementById('signInBtn').disabled = true;
-            document.getElementById('signInBtn').textContent = 'Sending...';
-            await storage.signInWithEmail(email);
-            this.showAuthMessage();
+            await storage.signInWithPassword(email, password);
+            // onAuthChange() swaps to the signed-in app view.
         } catch (e) {
             console.error('Sign in failed:', e);
-            alert('Sign in failed: ' + e.message);
-            document.getElementById('signInBtn').disabled = false;
-            document.getElementById('signInBtn').textContent = 'Send Magic Link';
+            let msg = e.message || 'Sign in failed.';
+            if (/invalid login credentials/i.test(msg)) {
+                msg = 'Wrong email or password. New here? Tap "Create Account".';
+            }
+            this.showAuthError(msg);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Sign In';
         }
+    }
+
+    async signUpWithPassword() {
+        const email = document.getElementById('authEmail').value.trim();
+        const password = document.getElementById('authPassword').value;
+        if (!email) {
+            this.showAuthError('Enter your email.');
+            return;
+        }
+        if (password.length < 6) {
+            this.showAuthError('Password must be at least 6 characters.');
+            return;
+        }
+
+        const btn = document.getElementById('signUpBtn');
+        btn.disabled = true;
+        btn.textContent = 'Creating...';
+        try {
+            const data = await storage.signUpWithPassword(email, password);
+            if (data && data.session) {
+                // Signed in immediately (email confirmation disabled in Supabase).
+                // onAuthChange() handles the view swap.
+            } else {
+                // No session => Supabase still has "Confirm email" enabled.
+                this.showAuthError(
+                    'Account created. Turn OFF "Confirm email" in Supabase ' +
+                    '(Authentication → Providers → Email), then tap Sign In.'
+                );
+            }
+        } catch (e) {
+            console.error('Sign up failed:', e);
+            let msg = e.message || 'Could not create account.';
+            if (/already registered/i.test(msg)) {
+                msg = 'That email already has an account — tap Sign In instead.';
+            }
+            this.showAuthError(msg);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Create Account';
+        }
+    }
+
+    showAuthError(message) {
+        const el = document.getElementById('authError');
+        el.textContent = message;
+        el.style.display = 'block';
     }
 
     showAuthForm() {
         document.getElementById('authForm').style.display = 'block';
-        document.getElementById('authMessage').style.display = 'none';
-        document.getElementById('authEmail').value = '';
+        document.getElementById('authError').style.display = 'none';
         document.getElementById('signInBtn').disabled = false;
-        document.getElementById('signInBtn').textContent = 'Send Magic Link';
-    }
-
-    showAuthMessage() {
-        document.getElementById('authForm').style.display = 'none';
-        document.getElementById('authMessage').style.display = 'block';
+        document.getElementById('signInBtn').textContent = 'Sign In';
     }
 
     async signOut() {

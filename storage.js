@@ -71,7 +71,35 @@ class Storage {
         }
     }
 
-    // Auth methods
+    // Auth methods (email + password)
+    async signUpWithPassword(email, password) {
+        if (!this.supabaseInitialized) {
+            await this.initSupabase();
+        }
+        if (!this.supabase) {
+            throw new Error('Supabase not initialized. Please refresh the page and try again.');
+        }
+        const { data, error } = await this.supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        // If "Confirm email" is disabled in Supabase, data.session is present and
+        // onAuthStateChange signs the user in immediately. If it's enabled,
+        // data.session is null until the user confirms via email.
+        return data;
+    }
+
+    async signInWithPassword(email, password) {
+        if (!this.supabaseInitialized) {
+            await this.initSupabase();
+        }
+        if (!this.supabase) {
+            throw new Error('Supabase not initialized. Please refresh the page and try again.');
+        }
+        const { data, error } = await this.supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        return data;
+    }
+
+    // Legacy email OTP/magic-link methods (kept but no longer used by the UI)
     async signInWithEmail(email) {
         // Initialize Supabase if not already done
         if (!this.supabaseInitialized) {
@@ -82,10 +110,16 @@ class Storage {
             throw new Error('Supabase not initialized. Please refresh the page and try again.');
         }
         try {
+            // Request a pure OTP (6-digit code) email. We deliberately DO NOT
+            // pass emailRedirectTo: setting it makes Supabase generate a magic
+            // LINK email, which can leave the 6-digit {{ .Token }} empty in the
+            // template. Code-based sign-in (verifyEmailCode) needs no redirect,
+            // so omitting it both fixes the empty-code problem and sidesteps the
+            // Site URL / Redirect URL allowlist and email link pre-scanning.
             const { data, error } = await this.supabase.auth.signInWithOtp({
                 email: email,
                 options: {
-                    emailRedirectTo: window.location.origin + window.location.pathname
+                    shouldCreateUser: true
                 }
             });
             if (error) throw error;
@@ -94,6 +128,24 @@ class Storage {
             console.error('Sign in error:', e);
             throw e;
         }
+    }
+
+    // Verify the 6-digit code from the email (redirect-free sign-in).
+    async verifyEmailCode(email, token) {
+        if (!this.supabaseInitialized) {
+            await this.initSupabase();
+        }
+        if (!this.supabase) {
+            throw new Error('Supabase not initialized. Please refresh the page and try again.');
+        }
+        const { data, error } = await this.supabase.auth.verifyOtp({
+            email: email,
+            token: String(token).trim(),
+            type: 'email'
+        });
+        if (error) throw error;
+        // onAuthStateChange will fire and drive the app into the signed-in state.
+        return data;
     }
 
     async signOut() {

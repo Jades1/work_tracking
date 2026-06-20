@@ -45,7 +45,8 @@ body {
     margin-bottom: 25px;
 }
 
-#authEmail {
+#authEmail,
+#authPassword {
     width: 100%;
     padding: 12px;
     margin-bottom: 15px;
@@ -55,14 +56,20 @@ body {
     box-sizing: border-box;
 }
 
-#authEmail:focus {
+#authEmail:focus,
+#authPassword:focus {
     outline: none;
     border-color: #2563eb;
     box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
 
-#signInBtn {
+#signInBtn,
+#signUpBtn {
     width: 100%;
+    margin-bottom: 10px;
+}
+
+#signUpBtn {
     margin-bottom: 20px;
 }
 

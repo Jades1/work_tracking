@@ -9,6 +9,7 @@ A personal time-tracking + Pomodoro webapp that syncs across devices and runs on
 - **Pomodoro timer** — Work in focused 30-minute periods with 5-minute breaks; configurable durations
 - **Alarm sound** — Audio notification when each Pomodoro period ends
 - **Cross-device sync** — Data syncs in real time across laptop and phone via Supabase
+- **Email + password sign-in** — Create an account and sign in with email + password (no magic links, codes, or email round-trips). Requires "Confirm email" to be turned OFF in Supabase → Authentication → Providers → Email so sign-up logs you in instantly
 - **Mobile-friendly** — Responsive design; use "Add to Home Screen" to make it feel like an app
 - **Delete time entries** — Click any block in the timeline to select it (white ring appears), then press Delete or Backspace to remove it
 - **Offline support** — Service worker caches the app; works offline and syncs when you come back online
