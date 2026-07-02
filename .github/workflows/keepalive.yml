@@ -19,7 +19,7 @@ jobs:
       - name: Ping Supabase REST API
         run: |
           URL=$(grep -o 'https://[a-z0-9]*\.supabase\.co' config.js | head -1)
-          KEY=$(grep -o 'eyJ[A-Za-z0-9._-]*' config.js | head -1)
+          KEY=$(grep -oE '(sb_publishable_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9._-]+)' config.js | head -1)
           if [ -z "$URL" ] || [ -z "$KEY" ]; then
             echo "Could not extract Supabase URL/anon key from config.js" >&2
             exit 1
