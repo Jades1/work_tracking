@@ -2,6 +2,8 @@
 
 A personal time-tracking + Pomodoro webapp that syncs across devices and runs on GitHub Pages.
 
+**Live app:** https://jades1.github.io/work_tracking/
+
 ## Features
 
 - **Task tracking** — Create tasks and track time spent on each
@@ -58,7 +60,7 @@ Once installed, the app runs in full-screen mode with offline support.
 1. Push the repo to GitHub
 2. Go to the repo settings → Pages
 3. Set Source to "Deploy from a branch" and select `main` / root folder
-4. The app will be live at `https://username.github.io/work_tracking`
+4. The app will be live at `https://<username>.github.io/work_tracking` (this deployment: https://jades1.github.io/work_tracking/)
 5. On any device, visit the URL and use "Add to Home Screen" (see above)
 
 ### Configuring Supabase (for cross-device sync)
