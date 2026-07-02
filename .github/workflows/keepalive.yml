@@ -1,0 +1,34 @@
+# Pings the Supabase project twice a week so the free-tier project doesn't
+# auto-pause from inactivity (~7 days idle → paused, DNS removed, app breaks).
+# The anon key in config.js is public by design (shipped to every browser);
+# RLS means this request returns no data — it only registers activity.
+# A failing run (non-2xx / unreachable host) usually means the project is
+# already paused: restore it at supabase.com/dashboard.
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: "0 14 * * 1,4" # Mon & Thu 14:00 UTC
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ping Supabase REST API
+        run: |
+          URL=$(grep -o 'https://[a-z0-9]*\.supabase\.co' config.js | head -1)
+          KEY=$(grep -o 'eyJ[A-Za-z0-9._-]*' config.js | head -1)
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "Could not extract Supabase URL/anon key from config.js" >&2
+            exit 1
+          fi
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+            "$URL/rest/v1/tasks?select=id&limit=1" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+          echo "Ping to $URL returned HTTP $STATUS"
+          case "$STATUS" in
+            2*) echo "Project is awake." ;;
+            *) echo "Unexpected status — project may be paused. Restore it in the Supabase dashboard." >&2; exit 1 ;;
+          esac
