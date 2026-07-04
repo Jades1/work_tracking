@@ -23,10 +23,6 @@ class Storage {
         this._syncing = false;
         this._pendingPull = false;
         this._pullTimer = null;
-        // Ids we've confirmed exist in the cloud. Lets the merge distinguish a
-        // local-only row that is PENDING upload (keep it) from one that was
-        // DELETED on another device (drop it) — otherwise deletes would resurrect.
-        this._syncedIds = new Set();
 
         this.loadFromLocalStorage();
     }
@@ -247,11 +243,13 @@ class Storage {
                 deleted: t.deleted || false
             }));
             const cloudTaskIds = new Set(cloudTasks.map(t => t.id));
-            // Keep a local-only task only if it was never synced (pending upload);
-            // if it was synced before but is now absent from cloud, it was deleted.
-            const localOnlyTasks = this.db.tasks.filter(t => !cloudTaskIds.has(t.id) && !this._syncedIds.has(t.id));
+            // PURE UNION: always keep local-only rows. A pull must never be able to
+            // delete a local category — even if the cloud read is empty/partial
+            // (RLS quirk, lag, or the DB rejecting writes). Task deletes are SOFT
+            // (deleted=true rides along in the cloud row), so a real delete still
+            // propagates through cloudTasks without needing to drop anything here.
+            const localOnlyTasks = this.db.tasks.filter(t => !cloudTaskIds.has(t.id));
             this.db.tasks = [...cloudTasks, ...localOnlyTasks];
-            cloudTaskIds.forEach(id => this._syncedIds.add(id));
 
             const cloudEntries = (timeEntries.data || []).map(e => ({
                 id: e.id,
@@ -262,9 +260,8 @@ class Storage {
                 type: e.type || 'tracked'
             }));
             const cloudEntryIds = new Set(cloudEntries.map(e => e.id));
-            const localOnlyEntries = this.db.timeEntries.filter(e => !cloudEntryIds.has(e.id) && !this._syncedIds.has(e.id));
+            const localOnlyEntries = this.db.timeEntries.filter(e => !cloudEntryIds.has(e.id));
             this.db.timeEntries = [...cloudEntries, ...localOnlyEntries];
-            cloudEntryIds.forEach(id => this._syncedIds.add(id));
 
             if (settings.data) {
                 this.db.settings = {
@@ -304,7 +301,6 @@ class Storage {
                         deleted: !!task.deleted
                     });
                     if (error) throw error;
-                    this._syncedIds.add(task.id);
                 } catch (e) {
                     console.error('Failed to sync task', task.id, e);
                 }
@@ -323,7 +319,6 @@ class Storage {
                         type: entry.type
                     });
                     if (error) throw error;
-                    this._syncedIds.add(entry.id);
                 } catch (e) {
                     console.error('Failed to sync time entry', entry.id, e);
                 }
