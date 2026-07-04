@@ -71,7 +71,10 @@
                         <button class="timeline-mode-btn" data-mode="vs-week">vs Last Week</button>
                     </div>
                 </div>
-                <p id="timelineHint" class="timeline-hint">Click a block to select, then press Delete or Backspace to remove</p>
+                <div class="timeline-actions">
+                    <p id="timelineHint" class="timeline-hint">Click a block to select, then Edit it or press Delete / Backspace to remove</p>
+                    <button id="editEntryBtn" class="btn-secondary timeline-edit-btn" style="display:none">Edit block</button>
+                </div>
                 <div id="timelineLegend" class="timeline-legend" style="display:none"></div>
                 <div id="timeline" class="timeline"></div>
             </section>
@@ -129,6 +132,27 @@
                 <ul id="categoryList" class="category-list"></ul>
             </section>
         </main>
+    </div>
+
+    <!-- Edit time block modal -->
+    <div id="editEntryModal" class="modal" style="display:none">
+        <div class="modal-content">
+            <h2>Edit time block</h2>
+            <p>Adjust when this block started and how long it lasted.</p>
+            <label class="edit-field">
+                Start time
+                <input type="time" id="editStartTime">
+            </label>
+            <label class="edit-field">
+                Duration (minutes)
+                <input type="number" id="editDuration" min="1" step="1">
+            </label>
+            <p id="editEntryError" style="display:none; color:#dc2626; font-size:13px; margin-top:6px;"></p>
+            <div class="edit-modal-actions">
+                <button id="editSaveBtn" class="btn-primary">Save</button>
+                <button id="editCancelBtn" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <!-- Visual alarm: full-screen overlay used by the "Screen Flash" alarm option -->

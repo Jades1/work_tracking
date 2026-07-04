@@ -783,3 +783,79 @@ button:active {
         font-size: 16px;
     }
 }
+
+/* Generic modal overlay (shared by the edit-block modal; #authModal has its own) */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+/* Timeline hint + Edit button row */
+.timeline-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.timeline-edit-btn {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+/* Live (in-progress) block: a soft pulse so you can see it's still running */
+.timeline-block--live {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 1px 3px rgba(0, 0, 0, 0.2);
+    animation: livePulse 1.6s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.35); }
+}
+
+/* Edit-block modal */
+.edit-field {
+    display: block;
+    text-align: left;
+    font-size: 13px;
+    color: #444;
+    margin-bottom: 14px;
+}
+
+.edit-field input {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.edit-field input:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.edit-modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.edit-modal-actions button {
+    flex: 1;
+}

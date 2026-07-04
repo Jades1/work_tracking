@@ -18,6 +18,11 @@ CREATE TABLE IF NOT EXISTS tasks (
 -- Add color column for databases created before categories had colors (safe to re-run)
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '#2563eb';
 
+-- Add deleted column for databases created before soft-delete existed (safe to re-run).
+-- Without this column, the app's task upserts fail and the WHOLE sync aborts silently,
+-- which manifests as categories disappearing and time entries never showing.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT FALSE;
+
 -- Create time_entries table
 CREATE TABLE IF NOT EXISTS time_entries (
     id TEXT PRIMARY KEY,

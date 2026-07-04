@@ -19,7 +19,36 @@ class Storage {
         this.subscriptions = [];
         this.supabaseInitialized = false;
 
+        // Sync coordination: avoid a realtime pull clobbering an in-flight push
+        this._syncing = false;
+        this._pendingPull = false;
+        this._pullTimer = null;
+        // Ids we've confirmed exist in the cloud. Lets the merge distinguish a
+        // local-only row that is PENDING upload (keep it) from one that was
+        // DELETED on another device (drop it) — otherwise deletes would resurrect.
+        this._syncedIds = new Set();
+
         this.loadFromLocalStorage();
+    }
+
+    // Collision-resistant id. Date.now() alone collides when two rows are created
+    // in the same millisecond (rapid category switching, back-to-back logs), and on
+    // upsert the second row silently overwrites the first — a data-loss path.
+    newId() {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            return crypto.randomUUID();
+        }
+        return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    }
+
+    // Local calendar-day key (YYYY-MM-DD). Using UTC (toISOString) mis-buckets
+    // entries around the UTC day rollover for negative-offset timezones, so an
+    // afternoon entry can drop off "today" in the evening.
+    localDateKey(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
     }
 
     async initSupabase() {
@@ -53,11 +82,14 @@ class Storage {
             console.log('Supabase initialized successfully');
 
             // Listen for auth state changes
-            this.supabase.auth.onAuthStateChange((event, session) => {
+            this.supabase.auth.onAuthStateChange(async (event, session) => {
                 this.user = session?.user || null;
                 if (this.user) {
                     this.syncEnabled = true;
-                    this.pullFromCloud();
+                    // Push local (offline/pending) data UP before pulling, so the
+                    // first pull can't wipe rows that never reached the cloud yet.
+                    try { await this.syncToCloud(); } catch (e) { console.error('Initial push failed:', e); }
+                    await this.pullFromCloud();
                 } else {
                     this.syncEnabled = false;
                     this.unsubscribeAll();
@@ -202,15 +234,26 @@ class Storage {
             if (tasks.error) throw tasks.error;
             if (timeEntries.error) throw timeEntries.error;
 
-            // Normalize Supabase snake_case columns to local camelCase schema
-            this.db.tasks = (tasks.data || []).map(t => ({
+            // Normalize Supabase snake_case columns to local camelCase schema.
+            // MERGE, don't overwrite: cloud is authoritative for rows it has, but
+            // local-only rows (not yet synced — e.g. just-created or mid-session)
+            // are RETAINED as pending uploads. A wholesale replace here was the
+            // core data-loss bug (offline categories / fresh entries erased).
+            const cloudTasks = (tasks.data || []).map(t => ({
                 id: t.id,
                 name: t.name,
                 color: t.color || '#2563eb',
                 createdAt: t.created_at,
                 deleted: t.deleted || false
             }));
-            this.db.timeEntries = (timeEntries.data || []).map(e => ({
+            const cloudTaskIds = new Set(cloudTasks.map(t => t.id));
+            // Keep a local-only task only if it was never synced (pending upload);
+            // if it was synced before but is now absent from cloud, it was deleted.
+            const localOnlyTasks = this.db.tasks.filter(t => !cloudTaskIds.has(t.id) && !this._syncedIds.has(t.id));
+            this.db.tasks = [...cloudTasks, ...localOnlyTasks];
+            cloudTaskIds.forEach(id => this._syncedIds.add(id));
+
+            const cloudEntries = (timeEntries.data || []).map(e => ({
                 id: e.id,
                 taskId: e.task_id,
                 start: e.start,
@@ -218,6 +261,10 @@ class Storage {
                 durationSec: e.duration_sec,
                 type: e.type || 'tracked'
             }));
+            const cloudEntryIds = new Set(cloudEntries.map(e => e.id));
+            const localOnlyEntries = this.db.timeEntries.filter(e => !cloudEntryIds.has(e.id) && !this._syncedIds.has(e.id));
+            this.db.timeEntries = [...cloudEntries, ...localOnlyEntries];
+            cloudEntryIds.forEach(id => this._syncedIds.add(id));
 
             if (settings.data) {
                 this.db.settings = {
@@ -229,7 +276,9 @@ class Storage {
             }
 
             this.saveToLocalStorage();
-            this.setupRealtimeSubscriptions();
+            this.setupRealtimeSubscriptions(); // no-op if already subscribed
+            // Reflect freshly-pulled cloud data (incl. cross-device changes) in the UI
+            if (window.app) window.app.refreshUI?.();
         } catch (e) {
             console.error('Failed to pull from cloud:', e);
         }
@@ -238,61 +287,82 @@ class Storage {
     async syncToCloud() {
         if (!this.supabase || !this.user) return;
 
+        this._syncing = true;
         try {
-            // Sync tasks
+            // Sync tasks — INCLUDING deleted ones (so soft-deletes propagate and a
+            // deleted category can't resurrect on the next pull). Each upsert is
+            // isolated: one failing row must not abort the rest of the sync (that
+            // was silently blocking time_entries from ever reaching the cloud).
             for (const task of this.db.tasks) {
-                if (!task.deleted) {
+                try {
                     const { error } = await this.supabase.from('tasks').upsert({
                         id: task.id,
                         user_id: this.user.id,
                         name: task.name,
                         color: task.color || '#2563eb',
                         created_at: task.createdAt,
-                        deleted: false
+                        deleted: !!task.deleted
                     });
                     if (error) throw error;
+                    this._syncedIds.add(task.id);
+                } catch (e) {
+                    console.error('Failed to sync task', task.id, e);
                 }
             }
 
             // Sync time entries
             for (const entry of this.db.timeEntries) {
-                const { error } = await this.supabase.from('time_entries').upsert({
-                    id: entry.id,
-                    user_id: this.user.id,
-                    task_id: entry.taskId,
-                    "start": entry.start,
-                    "end": entry.end,
-                    duration_sec: entry.durationSec,
-                    type: entry.type
-                });
-                if (error) throw error;
+                try {
+                    const { error } = await this.supabase.from('time_entries').upsert({
+                        id: entry.id,
+                        user_id: this.user.id,
+                        task_id: entry.taskId,
+                        "start": entry.start,
+                        "end": entry.end,
+                        duration_sec: entry.durationSec,
+                        type: entry.type
+                    });
+                    if (error) throw error;
+                    this._syncedIds.add(entry.id);
+                } catch (e) {
+                    console.error('Failed to sync time entry', entry.id, e);
+                }
             }
 
             // Sync settings
-            const { error: settingsError } = await this.supabase.from('settings').upsert({
-                user_id: this.user.id,
-                work_minutes: this.db.settings.workMinutes,
-                break_minutes: this.db.settings.breakMinutes,
-                alarm_sound: this.db.settings.alarmSound
-            });
-            if (settingsError) throw settingsError;
-        } catch (e) {
-            console.error('Failed to sync to cloud:', e);
-            throw e;
+            try {
+                const { error: settingsError } = await this.supabase.from('settings').upsert({
+                    user_id: this.user.id,
+                    work_minutes: this.db.settings.workMinutes,
+                    break_minutes: this.db.settings.breakMinutes,
+                    alarm_sound: this.db.settings.alarmSound
+                });
+                if (settingsError) throw settingsError;
+            } catch (e) {
+                console.error('Failed to sync settings', e);
+            }
+        } finally {
+            this._syncing = false;
+            // A realtime pull that arrived mid-sync was deferred — run it now.
+            if (this._pendingPull) {
+                this._pendingPull = false;
+                this.pullFromCloud();
+            }
         }
     }
 
     setupRealtimeSubscriptions() {
         if (!this.supabase || !this.user) return;
-
-        this.unsubscribeAll();
+        // Subscribe ONCE. Previously this ran on every pull, tearing down and
+        // rebuilding channels constantly (each self-upsert triggered a pull).
+        if (this.subscriptions.length) return;
 
         // Subscribe to tasks changes
         const tasksSub = this.supabase
             .channel(`tasks:${this.user.id}`)
             .on('postgres_changes',
                 { event: '*', schema: 'public', table: 'tasks', filter: `user_id=eq.${this.user.id}` },
-                (payload) => this.pullFromCloud()
+                (payload) => this.schedulePull()
             )
             .subscribe();
 
@@ -301,7 +371,7 @@ class Storage {
             .channel(`time_entries:${this.user.id}`)
             .on('postgres_changes',
                 { event: '*', schema: 'public', table: 'time_entries', filter: `user_id=eq.${this.user.id}` },
-                (payload) => this.pullFromCloud()
+                (payload) => this.schedulePull()
             )
             .subscribe();
 
@@ -310,11 +380,22 @@ class Storage {
             .channel(`settings:${this.user.id}`)
             .on('postgres_changes',
                 { event: '*', schema: 'public', table: 'settings', filter: `user_id=eq.${this.user.id}` },
-                (payload) => this.pullFromCloud()
+                (payload) => this.schedulePull()
             )
             .subscribe();
 
         this.subscriptions = [tasksSub, entriesSub, settingsSub];
+    }
+
+    // Debounce bursty realtime events into a single pull, and never pull while a
+    // push is in flight (that race could overwrite the row currently being saved).
+    schedulePull() {
+        if (this._pullTimer) clearTimeout(this._pullTimer);
+        this._pullTimer = setTimeout(() => {
+            this._pullTimer = null;
+            if (this._syncing) { this._pendingPull = true; return; }
+            this.pullFromCloud();
+        }, 500);
     }
 
     unsubscribeAll() {
@@ -331,7 +412,7 @@ class Storage {
 
     addTask(name, color = '#2563eb') {
         const task = {
-            id: Date.now().toString(),
+            id: this.newId(),
             name,
             color,
             createdAt: new Date().toISOString(),
@@ -354,17 +435,25 @@ class Storage {
     deleteTask(id) {
         const task = this.db.tasks.find(t => t.id === id);
         if (task) {
-            task.deleted = true;
+            task.deleted = true; // soft-delete; syncToCloud now propagates deleted=true
         }
         this.db.timeEntries = this.db.timeEntries.filter(e => e.taskId !== id);
         this.persist();
+        // Hard-delete the task's entries from the cloud too (we removed them locally,
+        // and the task row is kept-but-flagged, so ON DELETE CASCADE won't fire).
+        if (this.syncEnabled && this.supabase) {
+            this.supabase.from('time_entries').delete().eq('task_id', id)
+                .then(({ error }) => {
+                    if (error) console.error('Failed to delete task entries from cloud:', error);
+                });
+        }
     }
 
     // Time entry methods
     addTimeEntry(taskId, startTime, endTime, type = 'tracked') {
         const durationSec = Math.floor((endTime - startTime) / 1000);
         const entry = {
-            id: Date.now().toString(),
+            id: this.newId(),
             taskId,
             start: startTime.toISOString(),
             end: endTime.toISOString(),
@@ -381,11 +470,10 @@ class Storage {
     }
 
     getTimeEntriesForDate(date = new Date()) {
-        const dateStr = date.toISOString().split('T')[0];
-        return this.db.timeEntries.filter(e => {
-            const entryDate = e.start.split('T')[0];
-            return entryDate === dateStr;
-        });
+        // Compare LOCAL calendar days (not UTC) so evening entries don't fall off
+        // "today" after the UTC rollover.
+        const dateStr = this.localDateKey(date);
+        return this.db.timeEntries.filter(e => this.localDateKey(new Date(e.start)) === dateStr);
     }
 
     getTotalTimeForTaskOnDate(taskId, date = new Date()) {
@@ -409,6 +497,30 @@ class Storage {
                     if (error) console.error('Failed to delete time entry from cloud:', error);
                 });
         }
+    }
+
+    // Update an entry's span (used by live-tracking autosave and manual block edits).
+    updateTimeEntry(id, startISO, endISO) {
+        const entry = this.db.timeEntries.find(e => e.id === id);
+        if (!entry) return null;
+        entry.start = startISO;
+        entry.end = endISO;
+        entry.durationSec = Math.max(0, Math.floor((new Date(endISO) - new Date(startISO)) / 1000));
+        this.saveToLocalStorage();
+        if (this.syncEnabled && this.supabase) {
+            this.supabase.from('time_entries').upsert({
+                id: entry.id,
+                user_id: this.user.id,
+                task_id: entry.taskId,
+                "start": entry.start,
+                "end": entry.end,
+                duration_sec: entry.durationSec,
+                type: entry.type
+            }).then(({ error }) => {
+                if (error) console.error('Failed to update time entry in cloud:', error);
+            });
+        }
+        return entry;
     }
 
     // Settings methods

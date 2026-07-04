@@ -27,6 +27,17 @@ class App {
         this.workPeriodsCompleted = 0; // completed focus periods in the current session
         this.timerWorker = null; // Web Worker that drives ticks (background-resilient)
 
+        // Live in-progress tracking: the running work segment is saved as ONE entry
+        // that we extend every ~15s, so time is visible on the timeline immediately
+        // and survives a refresh/crash (instead of only logging at the 30-min mark).
+        this.liveEntryId = null;
+        this.lastAutosave = 0;
+        this.AUTOSAVE_MS = 15000;
+
+        // Manual block-edit state
+        this.editingIds = null;
+        this.editingStartDate = null;
+
         // Shared audio context for alarms (created/resumed on a user gesture)
         this.audioCtx = null;
 
@@ -80,6 +91,14 @@ class App {
         this.updateAuthStatus();
         this.renderColorPalette();
         this.renderCategoryList();
+        this.updateDailyTotal();
+    }
+
+    // Re-render from current storage state. Called after a cloud pull so
+    // cross-device changes (and merged data) show without a manual refresh.
+    refreshUI() {
+        this.updateAuthStatus();
+        this.renderCategoryList(); // also re-renders the timeline
         this.updateDailyTotal();
     }
 
@@ -187,6 +206,18 @@ class App {
                 document.querySelectorAll('.timeline-block.selected').forEach(b => b.classList.remove('selected'));
                 this.updateTimelineHint(false);
             }
+        });
+
+        // Edit selected time block
+        document.getElementById('editEntryBtn').addEventListener('click', () => this.openEditModal());
+        document.getElementById('editSaveBtn').addEventListener('click', () => this.saveEdit());
+        document.getElementById('editCancelBtn').addEventListener('click', () => this.closeEditModal());
+        document.getElementById('editDuration').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.saveEdit();
+        });
+        // Click the dark backdrop (outside the card) to dismiss
+        document.getElementById('editEntryModal').addEventListener('click', (e) => {
+            if (e.target.id === 'editEntryModal') this.closeEditModal();
         });
 
         // Timeline mode tabs
@@ -395,14 +426,80 @@ class App {
 
     updateTimelineHint(selected) {
         const hint = document.getElementById('timelineHint');
+        const editBtn = document.getElementById('editEntryBtn');
+
+        // Edit applies only to today's finished blocks — not past-day comparison
+        // blocks, and not the live/running block (autosave would overwrite the edit).
+        const selBlock = document.querySelector('#timeline .timeline-block.selected');
+        const canEdit = selected && selBlock
+            && !selBlock.classList.contains('timeline-block--past')
+            && !selBlock.classList.contains('timeline-block--live');
+        if (editBtn) editBtn.style.display = canEdit ? 'inline-block' : 'none';
+
         if (!hint) return;
         if (selected) {
-            hint.textContent = 'Entry selected — press Delete or Backspace to remove';
+            hint.textContent = 'Entry selected — Edit it, or press Delete / Backspace to remove';
             hint.classList.add('active');
         } else {
-            hint.textContent = 'Click a block to select, then press Delete or Backspace to remove';
+            hint.textContent = 'Click a block to select, then Edit it or press Delete / Backspace to remove';
             hint.classList.remove('active');
         }
+    }
+
+    openEditModal() {
+        const block = document.querySelector('#timeline .timeline-block.selected');
+        if (!block || block.classList.contains('timeline-block--past') || block.classList.contains('timeline-block--live')) return;
+
+        const start = new Date(block.dataset.start);
+        const mins = Math.max(1, parseInt(block.dataset.mins) || 1);
+        this.editingIds = block.dataset.entryId.split(',');
+        this.editingStartDate = start;
+
+        const hh = String(start.getHours()).padStart(2, '0');
+        const mm = String(start.getMinutes()).padStart(2, '0');
+        document.getElementById('editStartTime').value = `${hh}:${mm}`;
+        document.getElementById('editDuration').value = mins;
+        document.getElementById('editEntryError').style.display = 'none';
+        document.getElementById('editEntryModal').style.display = 'flex';
+    }
+
+    closeEditModal() {
+        document.getElementById('editEntryModal').style.display = 'none';
+        this.editingIds = null;
+        this.editingStartDate = null;
+    }
+
+    saveEdit() {
+        if (!this.editingIds || !this.editingStartDate) return;
+        const timeVal = document.getElementById('editStartTime').value;
+        const durVal = parseInt(document.getElementById('editDuration').value);
+        if (!timeVal || isNaN(durVal) || durVal < 1) {
+            const err = document.getElementById('editEntryError');
+            err.textContent = 'Enter a valid start time and a duration of at least 1 minute.';
+            err.style.display = 'block';
+            return;
+        }
+
+        const [h, m] = timeVal.split(':').map(Number);
+        const newStart = new Date(this.editingStartDate);
+        newStart.setHours(h, m, 0, 0);
+        const newEnd = new Date(newStart.getTime() + durVal * 60000);
+
+        // A block can represent several merged entries — collapse them into the
+        // single edited span (keep the first id, drop the rest).
+        const ids = this.editingIds;
+        storage.updateTimeEntry(ids[0], newStart.toISOString(), newEnd.toISOString());
+        for (let i = 1; i < ids.length; i++) storage.deleteTimeEntry(ids[i]);
+
+        // If the live segment was one of the collapsed extras, forget it so
+        // autosave starts a fresh entry rather than resurrecting a deleted id.
+        if (this.liveEntryId && ids.includes(this.liveEntryId)) this.liveEntryId = null;
+
+        this.closeEditModal();
+        this.selectedEntryId = null;
+        this.updateTimelineHint(false);
+        this.updateDailyTotal();
+        this.renderCategoryList();
     }
 
     renderTimeline() {
@@ -526,7 +623,9 @@ class App {
                         const idAttr = seg.ids.join(',');
                         const isSelected = idAttr === this.selectedEntryId;
                         const pastClass = past ? ' timeline-block--past' : '';
-                        return `<div class="timeline-block${isSelected ? ' selected' : ''}${pastClass}" data-entry-id="${idAttr}" style="top:${top}px; height:${height}px; background:${color}" title="${this.escapeHtml(cat.name)} · ${timeStr}">${mins}m</div>`;
+                        const isLive = !past && this.liveEntryId && seg.ids.includes(this.liveEntryId);
+                        const liveClass = isLive ? ' timeline-block--live' : '';
+                        return `<div class="timeline-block${isSelected ? ' selected' : ''}${pastClass}${liveClass}" data-entry-id="${idAttr}" data-start="${seg.start.toISOString()}" data-mins="${mins}" style="top:${top}px; height:${height}px; background:${color}" title="${this.escapeHtml(cat.name)} · ${timeStr}">${mins}m</div>`;
                     }).join('');
 
                 return `
@@ -596,6 +695,9 @@ class App {
         this.sessionMode = 'work';
         this.workSegmentStart = start;
         this.sessionEndTime = new Date(start.getTime() + settings.workMinutes * 60 * 1000);
+        // Fresh segment: next autosave creates a new live entry.
+        this.liveEntryId = null;
+        this.lastAutosave = 0;
     }
 
     beginBreak(from) {
@@ -643,8 +745,47 @@ class App {
             this.handlePeriodEnd();
         }
         if (!this.sessionRunning) return;
+        this.autosaveLiveSegment();
         const remainingSec = Math.max(0, Math.floor((this.sessionEndTime.getTime() - Date.now()) / 1000));
         this.updateSessionTimeText(remainingSec);
+    }
+
+    // Persist the growing work segment at most every AUTOSAVE_MS, then re-render so
+    // the block visibly grows and the daily total climbs while you work.
+    autosaveLiveSegment() {
+        if (this.sessionMode !== 'work' || !this.workSegmentStart) return;
+        const now = Date.now();
+        if (now - this.lastAutosave < this.AUTOSAVE_MS) return;
+        this.lastAutosave = now;
+        this.persistLiveSegment(new Date());
+    }
+
+    // Create the live entry the first time, then extend it. One entry per segment —
+    // never a swarm of tiny rows.
+    persistLiveSegment(endDate) {
+        if (this.sessionMode !== 'work' || !this.workSegmentStart) return;
+        if (endDate - this.workSegmentStart < 1000) return;
+        if (!this.liveEntryId) {
+            const entry = storage.addTimeEntry(this.activeCategoryId, this.workSegmentStart, endDate, 'pomodoro-work');
+            this.liveEntryId = entry.id;
+        } else {
+            storage.updateTimeEntry(this.liveEntryId, this.workSegmentStart.toISOString(), endDate.toISOString());
+        }
+        this.updateDailyTotal();   // re-renders the timeline
+        this.renderCategoryList(); // refreshes per-category "Today" totals
+    }
+
+    // Pin the live entry to an exact end (period boundary or Stop) and close it out.
+    finalizeLiveSegment(endDate) {
+        if (this.workSegmentStart && (endDate - this.workSegmentStart) >= 1000) {
+            if (!this.liveEntryId) {
+                storage.addTimeEntry(this.activeCategoryId, this.workSegmentStart, endDate, 'pomodoro-work');
+            } else {
+                storage.updateTimeEntry(this.liveEntryId, this.workSegmentStart.toISOString(), endDate.toISOString());
+            }
+        }
+        this.liveEntryId = null;
+        this.lastAutosave = 0;
     }
 
     handlePeriodEnd() {
@@ -652,7 +793,7 @@ class App {
         const boundary = new Date(this.sessionEndTime); // exact end of the period that just finished
 
         if (this.sessionMode === 'work') {
-            storage.addTimeEntry(this.activeCategoryId, this.workSegmentStart, boundary, 'pomodoro-work');
+            this.finalizeLiveSegment(boundary);
             this.workPeriodsCompleted++;
             this.updateDailyTotal();
             this.renderCategoryList();
@@ -679,12 +820,9 @@ class App {
         this.sessionRunning = false;
         this.stopTicking();
 
-        // Log partial work if we stopped mid-work session
+        // Finalize the in-progress work segment (the live entry, if any) on stop
         if (this.sessionMode === 'work' && this.workSegmentStart) {
-            const now = new Date();
-            if (now - this.workSegmentStart >= 1000) {
-                storage.addTimeEntry(this.activeCategoryId, this.workSegmentStart, now, 'pomodoro-work');
-            }
+            this.finalizeLiveSegment(new Date());
         }
 
         this.activeCategoryId = null;

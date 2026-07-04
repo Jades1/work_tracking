@@ -19,11 +19,16 @@ All data access goes through `storage.js`, which provides a unified interface fo
 - `config.example.js` — Template file; users copy to config.js and fill in their credentials
 
 ### Data model (per user, synced to Supabase)
-- `tasks`: { id, name, createdAt }
+- `tasks` (a "task" is a category in the UI): { id, name, color, createdAt, deleted } — soft-deleted via the `deleted` flag so deletions propagate across devices. IDs are `crypto.randomUUID()` (collision-safe).
 - `time_entries`: { id, taskId, start, end, durationSec, type: "tracked" | "pomodoro-work" }
-- `settings`: { workMinutes, breakMinutes, alarmSound }
+- `settings`: { workMinutes, breakMinutes, alarmSound } (+ local-only `repetitions`, not synced)
 
-Daily totals are computed by summing time_entries for the current date.
+Daily totals are computed by summing time_entries for the current **local** date.
+
+While a focus session runs, the active work segment is saved as a single live
+`time_entry` that is extended (`updateTimeEntry`) every ~15s and finalized at the
+period boundary or on Stop — so in-progress time is visible and durable, not lost
+if the tab closes mid-period.
 
 ## File structure
 
