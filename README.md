@@ -15,7 +15,7 @@ A personal time-tracking + Pomodoro webapp that syncs across devices and runs on
 - **Live in-progress tracking** — The moment you start a focus session its block appears on the timeline and grows in real time (auto-saved every ~15s), so tracked time is visible immediately and survives a refresh or crash instead of only being recorded at the end of a period
 - **Continuous timeline blocks** — Uninterrupted focus on one category shows as a single continuous block (consecutive periods are merged; breaks absorbed) instead of fragmented chunks
 - **Edit a time block** — Click a block in today's timeline to select it, then tap **Edit block** to correct its start time and duration (e.g. make it 30 or 60 minutes). Editing a merged block collapses it into the single corrected span
-- **Cross-device sync** — Data syncs in real time across laptop and phone via Supabase (note: the repetitions setting is local to each device)
+- **Cross-device sync** — Data syncs in real time across laptop and phone via Supabase (note: the repetitions setting is local to each device). Signing in shows your data immediately; the cloud push/pull runs in the background in batched requests, so a slow or stalled sync can never leave you stuck on "Signing in..."
 - **Email + password sign-in** — Create an account and sign in with email + password (no magic links, codes, or email round-trips). Requires "Confirm email" to be turned OFF in Supabase → Authentication → Providers → Email so sign-up logs you in instantly
 - **Mobile-friendly** — Responsive design; use "Add to Home Screen" to make it feel like an app
 - **Delete time entries** — Click any block in the timeline to select it (white ring appears), then press Delete or Backspace to remove it

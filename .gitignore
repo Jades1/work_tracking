@@ -3,3 +3,5 @@
 # committed here so the GitHub Pages site can initialize Supabase.
 node_modules/
 .DS_Store
+# Local data backups (personal time entries) never go to the public repo
+backups/

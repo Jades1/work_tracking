@@ -78,25 +78,61 @@ class Storage {
             console.log('Supabase initialized successfully');
 
             // Listen for auth state changes
-            this.supabase.auth.onAuthStateChange(async (event, session) => {
+            this.supabase.auth.onAuthStateChange((event, session) => {
                 this.user = session?.user || null;
                 if (this.user) {
                     this.syncEnabled = true;
-                    // Push local (offline/pending) data UP before pulling, so the
-                    // first pull can't wipe rows that never reached the cloud yet.
-                    try { await this.syncToCloud(); } catch (e) { console.error('Initial push failed:', e); }
-                    await this.pullFromCloud();
                 } else {
                     this.syncEnabled = false;
                     this.unsubscribeAll();
                 }
-                // Notify app of auth change
+                // Swap the view IMMEDIATELY. The cloud push/pull used to be awaited
+                // right here, so the Sign In button sat on "Signing in..." for as
+                // long as the sync took, or forever when it stalled. Local data is
+                // already on screen; the sync only adds what the cloud has.
                 if (window.app) window.app.onAuthChange?.(this.user);
+                if (this.user) {
+                    // Defer to a fresh tick: supabase-js holds its auth lock while
+                    // notifying subscribers, and every from() call needs that lock
+                    // to read the access token. Awaiting queries inside this
+                    // callback is the deadlock the Supabase docs warn about.
+                    setTimeout(() => this.initialSync(), 0);
+                }
             });
             this.supabaseInitialized = true;
         } catch (e) {
             console.error('Failed to initialize Supabase:', e);
             this.supabaseInitialized = true;
+        }
+    }
+
+    // Runs after every sign-in / session restore. Push local (offline/pending)
+    // rows UP first so the pull can't wipe anything that never reached the
+    // cloud, then pull. Coalesces overlapping calls (INITIAL_SESSION and
+    // SIGNED_IN often fire back to back).
+    initialSync() {
+        if (this._initialSyncPromise) return this._initialSyncPromise;
+        this._initialSyncPromise = (async () => {
+            try { await this.syncToCloud(); } catch (e) { console.error('Initial push failed:', e); }
+            try { await this.pullFromCloud(); } catch (e) { console.error('Initial pull failed:', e); }
+        })().finally(() => { this._initialSyncPromise = null; });
+        return this._initialSyncPromise;
+    }
+
+    // Upsert in batches: one request per chunk instead of one per row (153
+    // entries used to mean 153 sequential round-trips on every sign-in). If a
+    // chunk is rejected, retry its rows one at a time so a single bad row
+    // can't block the rest of the sync.
+    async upsertRows(table, rows, label, chunkSize = 200) {
+        for (let i = 0; i < rows.length; i += chunkSize) {
+            const chunk = rows.slice(i, i + chunkSize);
+            const { error } = await this.supabase.from(table).upsert(chunk);
+            if (!error) continue;
+            console.warn(`Batch upsert of ${chunk.length} ${label} rows failed; retrying individually`, error);
+            for (const row of chunk) {
+                const { error: rowError } = await this.supabase.from(table).upsert(row);
+                if (rowError) console.error(`Failed to sync ${label}`, row.id, rowError);
+            }
         }
     }
 
@@ -287,42 +323,26 @@ class Storage {
         this._syncing = true;
         try {
             // Sync tasks — INCLUDING deleted ones (so soft-deletes propagate and a
-            // deleted category can't resurrect on the next pull). Each upsert is
-            // isolated: one failing row must not abort the rest of the sync (that
-            // was silently blocking time_entries from ever reaching the cloud).
-            for (const task of this.db.tasks) {
-                try {
-                    const { error } = await this.supabase.from('tasks').upsert({
-                        id: task.id,
-                        user_id: this.user.id,
-                        name: task.name,
-                        color: task.color || '#2563eb',
-                        created_at: task.createdAt,
-                        deleted: !!task.deleted
-                    });
-                    if (error) throw error;
-                } catch (e) {
-                    console.error('Failed to sync task', task.id, e);
-                }
-            }
+            // deleted category can't resurrect on the next pull).
+            await this.upsertRows('tasks', this.db.tasks.map(task => ({
+                id: task.id,
+                user_id: this.user.id,
+                name: task.name,
+                color: task.color || '#2563eb',
+                created_at: task.createdAt,
+                deleted: !!task.deleted
+            })), 'task');
 
             // Sync time entries
-            for (const entry of this.db.timeEntries) {
-                try {
-                    const { error } = await this.supabase.from('time_entries').upsert({
-                        id: entry.id,
-                        user_id: this.user.id,
-                        task_id: entry.taskId,
-                        "start": entry.start,
-                        "end": entry.end,
-                        duration_sec: entry.durationSec,
-                        type: entry.type
-                    });
-                    if (error) throw error;
-                } catch (e) {
-                    console.error('Failed to sync time entry', entry.id, e);
-                }
-            }
+            await this.upsertRows('time_entries', this.db.timeEntries.map(entry => ({
+                id: entry.id,
+                user_id: this.user.id,
+                task_id: entry.taskId,
+                "start": entry.start,
+                "end": entry.end,
+                duration_sec: entry.durationSec,
+                type: entry.type
+            })), 'time entry');
 
             // Sync settings
             try {
