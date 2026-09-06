@@ -123,10 +123,33 @@ class Storage {
     // entries used to mean 153 sequential round-trips on every sign-in). If a
     // chunk is rejected, retry its rows one at a time so a single bad row
     // can't block the rest of the sync.
+    //
+    // Self-healing for schema drift: if the live table lacks a column the app
+    // sends (PostgREST PGRST204 "Could not find the 'color' column of 'tasks'"),
+    // drop that column from the rows and retry, and remember it for the rest
+    // of the session. Without this, ONE missing column made every category
+    // upsert fail, which made every time entry fail on its foreign key, and
+    // nothing ever reached the cloud (Time Tracker project, Jul to Sep 2026).
     async upsertRows(table, rows, label, chunkSize = 200) {
+        this._missingColumns = this._missingColumns || {};
+        const strip = (row) => {
+            const missing = this._missingColumns[table];
+            if (!missing || !missing.size) return row;
+            const copy = { ...row };
+            missing.forEach(col => delete copy[col]);
+            return copy;
+        };
         for (let i = 0; i < rows.length; i += chunkSize) {
-            const chunk = rows.slice(i, i + chunkSize);
-            const { error } = await this.supabase.from(table).upsert(chunk);
+            let chunk = rows.slice(i, i + chunkSize).map(strip);
+            let { error } = await this.supabase.from(table).upsert(chunk);
+            for (let attempt = 0; error && attempt < 5; attempt++) {
+                const col = this.missingColumnFromError(error);
+                if (!col) break;
+                console.warn(`Cloud table '${table}' has no column '${col}'; syncing without it. Run supabase-setup.sql on this project to add it.`);
+                (this._missingColumns[table] = this._missingColumns[table] || new Set()).add(col);
+                chunk = chunk.map(strip);
+                ({ error } = await this.supabase.from(table).upsert(chunk));
+            }
             if (!error) continue;
             console.warn(`Batch upsert of ${chunk.length} ${label} rows failed; retrying individually`, error);
             for (const row of chunk) {
@@ -134,6 +157,11 @@ class Storage {
                 if (rowError) console.error(`Failed to sync ${label}`, row.id, rowError);
             }
         }
+    }
+
+    missingColumnFromError(error) {
+        const m = /Could not find the '([^']+)' column|column "?\w+"?\."?(\w+)"? does not exist/i.exec(error?.message || '');
+        return m ? (m[1] || m[2]) : null;
     }
 
     // Auth methods (email + password)
