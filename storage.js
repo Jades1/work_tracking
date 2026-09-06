@@ -299,10 +299,13 @@ class Storage {
             // local-only rows (not yet synced — e.g. just-created or mid-session)
             // are RETAINED as pending uploads. A wholesale replace here was the
             // core data-loss bug (offline categories / fresh entries erased).
+            // If the cloud table has no color column (see upsertRows), keep the
+            // color this device already has rather than resetting it to blue.
+            const localColor = new Map(this.db.tasks.map(t => [t.id, t.color]));
             const cloudTasks = (tasks.data || []).map(t => ({
                 id: t.id,
                 name: t.name,
-                color: t.color || '#2563eb',
+                color: t.color || localColor.get(t.id) || '#2563eb',
                 createdAt: t.created_at,
                 deleted: t.deleted || false
             }));
