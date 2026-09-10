@@ -318,11 +318,17 @@ class Storage {
             const localOnlyTasks = this.db.tasks.filter(t => !cloudTaskIds.has(t.id));
             this.db.tasks = [...cloudTasks, ...localOnlyTasks];
 
+            // The cloud columns were created as TIMESTAMP (no zone), which drops
+            // the trailing "Z" the app writes and hands back a bare clock time
+            // that JS would parse as LOCAL time (every entry shifted by the UTC
+            // offset; a 5pm PDT session came back as 12am). The stored clock
+            // is UTC, so restore the marker before caching.
+            const asUtc = (ts) => (typeof ts === 'string' && !/(Z|[+-]\d\d:?\d\d)$/.test(ts)) ? ts + 'Z' : ts;
             const cloudEntries = (timeEntries.data || []).map(e => ({
                 id: e.id,
                 taskId: e.task_id,
-                start: e.start,
-                end: e.end,
+                start: asUtc(e.start),
+                end: asUtc(e.end),
                 durationSec: e.duration_sec,
                 type: e.type || 'tracked'
             }));
